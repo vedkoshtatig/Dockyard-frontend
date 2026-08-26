@@ -1,0 +1,16 @@
+[     460ms] [WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:5174/:0
+[     479ms] [WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:5174/:0
+[     531ms] [WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:5174/:0
+[     599ms] [WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://localhost:5174/:0
+[ 1692237ms] ReferenceError: isCraneMagnetPart is not defined
+    at setupHangingLoad (http://localhost:5174/src/main.js?t=1787728210037:1996:36)
+    at http://localhost:5174/src/main.js?t=1787728210037:3632:5
+[ 1713831ms] ReferenceError: isCraneMagnetPart is not defined
+    at setupHangingLoad (http://localhost:5174/src/main.js?t=1787728232403:1996:36)
+    at http://localhost:5174/src/main.js?t=1787728232403:3733:5
+[ 1741168ms] ReferenceError: isCraneMagnetPart is not defined
+    at setupHangingLoad (http://localhost:5174/src/main.js?t=1787728259884:1996:36)
+    at http://localhost:5174/src/main.js?t=1787728259884:3748:5
+[ 1759572ms] ReferenceError: isCraneMagnetPart is not defined
+    at setupHangingLoad (http://localhost:5174/src/main.js?t=1787728277638:1996:36)
+    at http://localhost:5174/src/main.js?t=1787728277638:3758:5

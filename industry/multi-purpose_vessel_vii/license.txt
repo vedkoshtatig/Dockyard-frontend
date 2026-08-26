@@ -1,0 +1,11 @@
+Model Information:
+* title:	Multi-purpose Vessel VII
+* source:	https://sketchfab.com/3d-models/multi-purpose-vessel-vii-80aa5e7f2fab4abd9b3558a7411fdb98
+* author:	gogiart (https://sketchfab.com/agt14032013)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Multi-purpose Vessel VII" (https://sketchfab.com/3d-models/multi-purpose-vessel-vii-80aa5e7f2fab4abd9b3558a7411fdb98) by gogiart (https://sketchfab.com/agt14032013) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

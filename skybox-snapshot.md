@@ -1,0 +1,6 @@
+- main [ref=e2] [box=0,0,780,493]:
+  - generic "Scene controls" [box=16,16,748,46]:
+    - generic [ref=e4] [box=16,17,162,44]: Dockyard Stack
+    - generic [ref=e7] [box=672,16,92,46]:
+      - button "Reset view" [ref=e8] [cursor=pointer] [box=677,21,36,36]
+      - button "Fullscreen" [ref=e12] [cursor=pointer] [box=723,21,36,36]

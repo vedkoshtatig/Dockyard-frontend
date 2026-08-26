@@ -1,0 +1,4 @@
+[    1854ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/src/main.js?t=1787316720634:291
+[  160788ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/src/main.js?t=1787316900473:305
+[ 1390549ms] [LOG] [vite] server connection lost. Polling for restart... @ http://127.0.0.1:5173/@vite/client:559
+[ 2133920ms] [LOG] [vite] server connection lost. Polling for restart... @ http://127.0.0.1:5173/@vite/client:559

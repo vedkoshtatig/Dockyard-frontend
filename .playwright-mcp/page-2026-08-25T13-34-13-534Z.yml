@@ -1,0 +1,33 @@
+- generic [active] [ref=f4e1]:
+  - main [ref=f4e2]:
+    - status [ref=f4e4]: Loading dockyard file 59%
+  - generic "Game HUD":
+    - generic [ref=f4e5]: Dockyard Stack
+    - generic [ref=f4e8]:
+      - generic [ref=f4e9]: Mock data
+      - generic [ref=f4e10]: "-- fps"
+      - generic [ref=f4e11]: Loading dockyard
+      - generic [ref=f4e12]:
+        - button "Reset view" [ref=f4e13] [cursor=pointer]
+        - button "Fullscreen" [ref=f4e17] [cursor=pointer]
+  - generic "Camera height control" [ref=f4e23]:
+    - generic [ref=f4e24]: UP
+    - slider "Move camera up or down the stack" [ref=f4e25]: "0"
+    - generic [ref=f4e26]: DN
+  - generic "Game controls" [ref=f4e27]:
+    - generic [ref=f4e28]:
+      - generic [ref=f4e29]: Balance
+      - strong [ref=f4e30]: SC --
+    - generic [ref=f4e31]:
+      - generic [ref=f4e32]: Difficulty
+      - combobox "Difficulty" [disabled] [ref=f4e33]:
+        - option "Easy" [selected]
+        - option "Medium"
+        - option "Hard"
+        - option "Hardcore"
+    - button "Cash Out" [disabled] [ref=f4e34]
+    - generic [ref=f4e35]:
+      - generic [ref=f4e36]: Bet
+      - spinbutton "Bet" [disabled] [ref=f4e37]: "1"
+    - button "Play" [disabled] [ref=f4e38]
+    - button "Reset round" [ref=f4e39] [cursor=pointer]

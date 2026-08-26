@@ -1,0 +1,7 @@
+Total messages: 6 (Errors: 0, Warnings: 4)
+Returning 4 messages for level "warning"
+
+[WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:5174/:0
+[WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:5174/:0
+[WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:5174/:0
+[WARNING] [.WebGL-0x263c000f1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://localhost:5174/:0

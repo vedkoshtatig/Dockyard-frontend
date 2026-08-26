@@ -1,0 +1,8 @@
+Model Information:
+* title:	Crane Magnet
+* source:	https://sketchfab.com/3d-models/crane-magnet-55d209a4e64d41ac93a109a02f9c109d
+* author:	Icradin (https://sketchfab.com/Icradin)
+
+Model License:
+* license type:	see model page (https://sketchfab.com/3d-models/crane-magnet-55d209a4e64d41ac93a109a02f9c109d)
+* requirements:	see https://sketchfab.com/3d-models/crane-magnet-55d209a4e64d41ac93a109a02f9c109d

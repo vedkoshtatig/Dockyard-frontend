@@ -1,0 +1,19 @@
+{
+  "name": "dockyard-stack-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "export:model": "XDG_CACHE_HOME=/tmp/blender-cache blender --factory-startup -b industry/megablocks.blend --python tools/export_dockyard.py",
+    "export:blend": "npm run export:model"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.21"
+  }
+}

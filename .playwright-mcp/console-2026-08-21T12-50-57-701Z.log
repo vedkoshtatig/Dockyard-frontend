@@ -1,0 +1,9 @@
+[     805ms] [WARNING] [.WebGL-0x1b24000f0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:5173/?fresh=single-tab-final:0
+[     825ms] [WARNING] [.WebGL-0x1b24000f0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:5173/?fresh=single-tab-final:0
+[     873ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/src/main.js:286
+[     875ms] [WARNING] [.WebGL-0x1b24000f0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:5173/?fresh=single-tab-final:0
+[    1427ms] [WARNING] [.WebGL-0x1b24000f0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://127.0.0.1:5173/?fresh=single-tab-final:0
+[   64035ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/src/main.js?t=1787316720634:291
+[  244659ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/src/main.js?t=1787316900473:305
+[ 1474456ms] [LOG] [vite] server connection lost. Polling for restart... @ http://127.0.0.1:5173/@vite/client:559
+[ 2218016ms] [LOG] [vite] server connection lost. Polling for restart... @ http://127.0.0.1:5173/@vite/client:559
