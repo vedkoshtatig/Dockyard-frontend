@@ -14,3 +14,8 @@
 [ 1759572ms] ReferenceError: isCraneMagnetPart is not defined
     at setupHangingLoad (http://localhost:5174/src/main.js?t=1787728277638:1996:36)
     at http://localhost:5174/src/main.js?t=1787728277638:3758:5
+[ 4287316ms] ReferenceError: createChimneySmokeTexture is not defined
+    at http://localhost:5174/src/main.js?t=1787730808712:312:29
+[ 4349520ms] [WARNING] No chimney-top object found for smoke emission. @ http://localhost:5174/src/main.js?t=1787730871356:3160
+[ 6692192ms] ReferenceError: createSplashTexture is not defined
+    at http://localhost:5174/src/main.js?t=1787733214377:320:23

@@ -33,13 +33,7 @@ const WATER_ANIMATION_SPEED = 1.65;
 const WATER_SHIMMER_SPEED = 0.55;
 const WATER_QUALITY = 'HIGH';
 const SKYBOX_TEXTURE_SCROLL_SPEED = 0.002;
-const SHIP_INTRO_START_AXIS = new THREE.Vector3(0, 0, -1);
-const SHIP_INTRO_START_DISTANCE = 102;
-const SHIP_WAKE_BASE_STRENGTH = 0.2;
-const SHIP_WAKE_SPEED_RESPONSE = 0.035;
-const SHIP_WAKE_INTRO_BOOST = 0.32;
-const SHIP_WAKE_MAX_STRENGTH = 0.95;
-const SHIP_WAKE_SMOOTHING = 5.5;
+const SHIP_INTRO_START_DISTANCE = 42;
 const SHIP_MOTION = {
   speed: 0.58,
   heightOffset: 2.2,
@@ -99,7 +93,6 @@ const STACK_DROP_SECONDS = 0.5;
 const HANGING_LOAD_CAMERA_FOLLOW_SPEED = 8;
 const HANGING_LOAD_RETRACT_SECONDS = 0.56;
 const HANGING_LOAD_DESCEND_SECONDS = 0.86;
-const INTRO_HANGING_LOAD_DESCEND_SECONDS = 1.15;
 const HANGING_LOAD_OFFSCREEN_PROJECTED_Y = 1.18;
 const HANGING_LOAD_OFFSCREEN_MIN_LIFT = 9;
 const HANGING_LOAD_OFFSCREEN_MAX_LIFT = 72;
@@ -119,12 +112,6 @@ const DUST_DURATION_RANGE = [0.7, 1.18];
 const DUST_GRAVITY = 1.85;
 const DUST_DRAG = 1.4;
 const DUST_EXPANSION = 2.35;
-const WATER_SPLASH_PARTICLE_COUNT = 58;
-const WATER_SPLASH_DURATION_RANGE = [0.52, 0.92];
-const WATER_SPLASH_GRAVITY = 9.6;
-const WATER_SPLASH_RING_DURATION = 1.05;
-const WATER_SPLASH_RING_EXPANSION = 5.8;
-const WATER_SPLASH_IMPACT_SPEED_RESPONSE = 0.075;
 const BAD_LANDING_TILT_DEGREES = 14;
 const COLLAPSE_GRAVITY = 18;
 const COLLAPSE_CAMERA_FOLLOW_SPEED = 5;
@@ -135,7 +122,7 @@ const CAMERA_BASE_STACK_VIEW_Y = 0.4;
 const LOCK_CAMERA_TO_BLENDER_VIEW = true;
 const SLIDER_ORBIT_DEGREES_PER_HEIGHT_UNIT = 9;
 const INTRO_CAMERA_START_PROGRESS = 0.7;
-const INTRO_CAMERA_DURATION_SECONDS = 6;
+const INTRO_CAMERA_DURATION_SECONDS = 3.6;
 const DESTROY_BELOW_GROUND_DISTANCE = 5;
 const FALLBACK_STACK_ANCHOR = new THREE.Vector3(0, 0, 0);
 const WORLD_UP_AXIS = new THREE.Vector3(0, 1, 0);
@@ -287,7 +274,6 @@ let mountedStackPart = null;
 let blockHandoffInProgress = false;
 let collapsingBlocks = [];
 let dustParticles = [];
-let splashEffects = [];
 let stackAnchor = {
   center: FALLBACK_STACK_ANCHOR.clone(),
   halfWidthX: STACK_RANDOM_X_RANGE,
@@ -317,7 +303,6 @@ let fpsTimer = 0;
 const textureLoader = new THREE.TextureLoader();
 const clock = new THREE.Clock();
 const dustTexture = createDustTexture();
-const splashTexture = createSplashTexture();
 const shipBounds = new THREE.Box3();
 const shipBoundsSize = new THREE.Vector3();
 const shipBoundsCenter = new THREE.Vector3();
@@ -521,26 +506,6 @@ function createDustTexture() {
   }
 
   const texture = new THREE.CanvasTexture(dustCanvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-function createSplashTexture() {
-  const splashCanvas = document.createElement('canvas');
-  splashCanvas.width = 64;
-  splashCanvas.height = 64;
-
-  const context = splashCanvas.getContext('2d');
-  if (context) {
-    const gradient = context.createRadialGradient(32, 32, 2, 32, 32, 32);
-    gradient.addColorStop(0, 'rgba(245, 253, 255, 0.95)');
-    gradient.addColorStop(0.36, 'rgba(183, 232, 245, 0.58)');
-    gradient.addColorStop(1, 'rgba(183, 232, 245, 0)');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, splashCanvas.width, splashCanvas.height);
-  }
-
-  const texture = new THREE.CanvasTexture(splashCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
@@ -1315,17 +1280,12 @@ function frameObject(object) {
 
 function resetView() {
   if (!defaultCamera || !defaultTarget) return;
-  const wasIntroCameraActive = Boolean(introCameraAnimation);
   introCameraAnimation = null;
   returningCameraToBase = false;
   camera.position.copy(defaultCamera);
   controls.target.copy(defaultTarget);
   controls.update();
   updateCameraSlider();
-
-  if (wasIntroCameraActive) {
-    startIntroHangingLoadDescend();
-  }
 }
 
 function resize() {
@@ -1469,7 +1429,7 @@ function createWaterMaterial(dockBounds) {
         vec2 shipScale = max(shipHalfSize, vec2(1.0));
         float shipDistance = length((waterPoint - shipCenter) / shipScale);
         float shipWake = shipWakeStrength * (1.0 - smoothstep(0.72, 3.8, shipDistance));
-        float wakeRipple = sin(shipDistance * 18.0 - time * 4.1) * shipWake * 0.24;
+        float wakeRipple = sin(shipDistance * 18.0 - time * 4.1) * shipWake * 0.08;
         vWave = oceanHeight(waterPoint) + centerRippleHeight(waterPoint) * 0.78 + wakeRipple;
         vCrest = smoothstep(0.08, 0.52, vWave);
         transformed.z += vWave * 0.08;
@@ -1600,8 +1560,8 @@ function createWaterMaterial(dockBounds) {
         vec2 shipScale = max(shipHalfSize, vec2(1.0));
         vec2 shipVector = waterPoint - shipCenter;
         float shipDistance = length(shipVector / shipScale);
-        float shipContact = shipWakeStrength * (1.0 - smoothstep(0.62, 1.42, shipDistance)) * 0.42;
-        float shipWakeBand = shipWakeStrength * (1.0 - smoothstep(0.72, 7.6, shipDistance)) * 0.34;
+        float shipContact = shipWakeStrength * (1.0 - smoothstep(0.62, 1.42, shipDistance)) * 0.18;
+        float shipWakeBand = shipWakeStrength * (1.0 - smoothstep(0.72, 7.6, shipDistance)) * 0.16;
         float shipRipple = (sin(shipDistance * 19.0 - time * 3.95) * 0.5 + 0.5)
           * shipWakeBand
           * (0.45 + noise(waterPoint * 0.74 + vec2(shimmerTime * -0.22, shimmerTime * 0.17)) * 0.55);
@@ -1638,8 +1598,8 @@ function createWaterMaterial(dockBounds) {
 
         color = mix(color, skyReflection, clamp((fresnel * 0.42 + crestMask * 0.08) * reflectionStrength, 0.0, 0.46));
         color += vec3(0.78, 0.9, 0.88) * glint;
-        color += vec3(0.08, 0.18, 0.18) * shipRipple * 0.14;
-        color = mix(color, vec3(0.72, 0.86, 0.84), clamp(wallFoam * 0.08 + crestFoam * 0.08 + centerFoam * 0.34 + shipContact * 0.14 + shipRipple * 0.1, 0.0, 0.44));
+        color += vec3(0.08, 0.18, 0.18) * shipRipple * 0.08;
+        color = mix(color, vec3(0.72, 0.86, 0.84), clamp(wallFoam * 0.08 + crestFoam * 0.08 + centerFoam * 0.34 + shipContact * 0.06 + shipRipple * 0.04, 0.0, 0.34));
 
         float edgeDistance = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
         float edgeFade = smoothstep(0.0, 0.055, edgeDistance);
@@ -1647,7 +1607,7 @@ function createWaterMaterial(dockBounds) {
           discard;
         }
 
-        float alpha = mix(0.94, 1.0, clamp(fresnel + wallFoam + shipContact * 0.9, 0.0, 1.0));
+        float alpha = mix(0.94, 1.0, clamp(fresnel + wallFoam + shipContact * 0.5, 0.0, 1.0));
         gl_FragColor = vec4(color, alpha * edgeFade);
       }
     `,
@@ -1851,8 +1811,6 @@ function setupFloatingShip(root) {
     basePosition: shipRoot.position.clone(),
     baseQuaternion: shipRoot.quaternion.clone(),
     phase: Math.random() * Math.PI * 2,
-    previousWakeCenter: null,
-    wakeStrength: SHIP_WAKE_BASE_STRENGTH,
   };
 
   if (import.meta.env.DEV) {
@@ -1908,52 +1866,19 @@ function setupFloatingShip(root) {
   updateShipWaterInteraction();
 }
 
-function updateShipWaterInteraction(deltaSeconds = 0) {
+function updateShipWaterInteraction() {
   if (!water || !floatingShip) return;
 
   shipBounds.setFromObject(floatingShip.object);
   shipBounds.getSize(shipBoundsSize);
   shipBounds.getCenter(shipBoundsCenter);
-  const wakeCenter = new THREE.Vector3(shipBoundsCenter.x, 0, shipBoundsCenter.z);
-  const frameDelta = Number.isFinite(deltaSeconds) ? deltaSeconds : 0;
-  let planarSpeed = 0;
-
-  if (floatingShip.previousWakeCenter && frameDelta > 0) {
-    planarSpeed = wakeCenter.distanceTo(floatingShip.previousWakeCenter) / frameDelta;
-  }
-
-  if (!floatingShip.previousWakeCenter) {
-    floatingShip.previousWakeCenter = wakeCenter.clone();
-  } else {
-    floatingShip.previousWakeCenter.copy(wakeCenter);
-  }
-
-  const introWakeProgress = introCameraAnimation
-    ? 1 - THREE.MathUtils.clamp(introCameraAnimation.elapsed / introCameraAnimation.duration, 0, 1)
-    : 0;
-  const targetWakeStrength = THREE.MathUtils.clamp(
-    SHIP_WAKE_BASE_STRENGTH
-      + planarSpeed * SHIP_WAKE_SPEED_RESPONSE
-      + introWakeProgress * SHIP_WAKE_INTRO_BOOST,
-    SHIP_WAKE_BASE_STRENGTH,
-    SHIP_WAKE_MAX_STRENGTH,
-  );
-  const wakeSmoothing = frameDelta > 0
-    ? 1 - Math.exp(-frameDelta * SHIP_WAKE_SMOOTHING)
-    : 1;
-
-  floatingShip.wakeStrength = THREE.MathUtils.lerp(
-    floatingShip.wakeStrength ?? targetWakeStrength,
-    targetWakeStrength,
-    wakeSmoothing,
-  );
 
   water.material.uniforms.shipCenter.value.set(shipBoundsCenter.x, shipBoundsCenter.z);
   water.material.uniforms.shipHalfSize.value.set(
     Math.max(shipBoundsSize.x * 0.5 + SHIP_WAKE_PADDING * 1.6, 1),
     Math.max(shipBoundsSize.z * 0.5 + SHIP_WAKE_PADDING * 1.6, 1),
   );
-  water.material.uniforms.shipWakeStrength.value = floatingShip.wakeStrength;
+  water.material.uniforms.shipWakeStrength.value = 0.18;
 
   if (shipWake) {
     const wakeLength = THREE.MathUtils.clamp(
@@ -1982,12 +1907,25 @@ function getShipIntroStartOffset() {
     return null;
   }
 
-  const axis = SHIP_INTRO_START_AXIS.clone();
-  if (axis.lengthSq() < 0.0001) {
-    axis.set(0, 0, -1);
-  }
+  const { object, basePosition } = floatingShip;
+  const parent = object.parent;
+  const finalWorldPosition = parent
+    ? parent.localToWorld(basePosition.clone())
+    : basePosition.clone();
+  const behindDirection = finalWorldPosition.clone().sub(camera.position);
 
-  return axis.normalize().multiplyScalar(SHIP_INTRO_START_DISTANCE);
+  behindDirection.y = 0;
+  if (behindDirection.lengthSq() < 0.0001) {
+    behindDirection.set(0, 0, -1);
+  }
+  behindDirection.normalize().multiplyScalar(SHIP_INTRO_START_DISTANCE);
+
+  const startWorldPosition = finalWorldPosition.clone().add(behindDirection);
+  const startLocalPosition = parent
+    ? parent.worldToLocal(startWorldPosition)
+    : startWorldPosition;
+
+  return startLocalPosition.sub(basePosition);
 }
 
 function getShipIntroOffset() {
@@ -2005,7 +1943,7 @@ function getShipIntroOffset() {
   return startOffset.clone().multiplyScalar(1 - easedProgress);
 }
 
-function updateFloatingShip(elapsedSeconds, deltaSeconds = 0) {
+function updateFloatingShip(elapsedSeconds) {
   if (!floatingShip) return;
 
   const { object, basePosition, baseQuaternion, phase } = floatingShip;
@@ -2031,7 +1969,7 @@ function updateFloatingShip(elapsedSeconds, deltaSeconds = 0) {
   shipWobbleQuaternion.setFromEuler(new THREE.Euler(pitch, yawDrift, roll, 'XYZ'));
   object.quaternion.copy(baseQuaternion).multiply(shipWobbleQuaternion);
 
-  updateShipWaterInteraction(deltaSeconds);
+  updateShipWaterInteraction();
   if (shipWake) {
     shipWake.material.uniforms.time.value = seaTime;
   }
@@ -2100,7 +2038,6 @@ function setupHangingLoad(root) {
   };
 
   setHangingCarrierVisible(false);
-  setHangingLoadAssemblyVisible(false);
 
   if (import.meta.env.DEV) {
     window.__dockyardDebug = {
@@ -2126,14 +2063,6 @@ function setHangingCarrierVisible(isVisible) {
   for (const container of hangingLoad.carrierContainers) {
     container.visible = isVisible;
   }
-}
-
-function setHangingLoadAssemblyVisible(isVisible) {
-  if (!hangingLoad) {
-    return;
-  }
-
-  hangingLoad.pivot.visible = isVisible;
 }
 
 function updateHangingCarrierVisibility() {
@@ -2280,34 +2209,6 @@ function getHangingLoadBottomWorldPoint(pivotPosition) {
 
 function isHangingLoadHoisting() {
   return Boolean(hangingLoad?.hoistCycle);
-}
-
-function startIntroHangingLoadDescend() {
-  if (!hangingLoad) {
-    return;
-  }
-
-  const targetPosition = getHangingLoadBasePosition();
-  const startPosition = getHangingLoadOffscreenPosition(targetPosition);
-
-  hangingLoad.pivot.position.copy(startPosition);
-  hangingLoad.basePosition.copy(startPosition);
-  setHangingLoadAssemblyVisible(true);
-  hangingLoad.hoistCycle = {
-    duration: INTRO_HANGING_LOAD_DESCEND_SECONDS,
-    elapsed: 0,
-    onComplete: () => {
-      const readyPosition = getHangingLoadBasePosition();
-      hangingLoad.basePosition.copy(readyPosition);
-      hangingLoad.pivot.position.copy(readyPosition);
-      setHangingLoadAssemblyVisible(true);
-      updateHangingCarrierVisibility();
-    },
-    phase: 'descending',
-    startPosition,
-    targetPosition,
-  };
-  updateHangingCarrierVisibility();
 }
 
 function easeInOutSmoother(progress) {
@@ -2947,7 +2848,6 @@ function resetStackPool() {
   updateHangingCarrierVisibility();
   clearLandingImpact();
   clearDustParticles();
-  clearSplashEffects();
 }
 
 function mountNextStackPart({ snapHangingLoadToBase = true } = {}) {
@@ -3153,7 +3053,6 @@ function startTowerCollapse() {
       continue;
     }
 
-    const startBox = new THREE.Box3().setFromObject(part.object);
     collapsingBlocks.push({
       angularVelocity: new THREE.Vector3(
         THREE.MathUtils.randFloatSpread(2.4),
@@ -3161,9 +3060,7 @@ function startTowerCollapse() {
         THREE.MathUtils.randFloatSpread(2.4),
       ),
       delay: (stackIndex - index - 1) * 0.025 + Math.random() * 0.08,
-      hasSplashed: false,
       object: part.object,
-      previousWaterBottomY: startBox.isEmpty() ? Number.POSITIVE_INFINITY : startBox.min.y,
       startY: part.object.position.y,
       velocity: new THREE.Vector3(
         THREE.MathUtils.randFloatSpread(3.5),
@@ -3206,7 +3103,6 @@ function updateTowerCollapse(delta) {
     block.object.rotation.y += block.angularVelocity.y * delta;
     block.object.rotation.z += block.angularVelocity.z * delta;
     totalFallDistance += Math.max(block.startY - block.object.position.y, 0);
-    maybeTriggerBlockWaterSplash(block);
 
     if (block.object.position.y < stackAnchor.topY - DESTROY_BELOW_GROUND_DISTANCE) {
       block.object.visible = false;
@@ -3334,166 +3230,6 @@ function removeDustParticle(index) {
   const [particle] = dustParticles.splice(index, 1);
   particle.sprite.removeFromParent();
   particle.sprite.material.dispose();
-}
-
-function maybeTriggerBlockWaterSplash(block) {
-  if (!water || block.hasSplashed || !block.object.visible) {
-    return;
-  }
-
-  const box = new THREE.Box3().setFromObject(block.object);
-  if (box.isEmpty()) {
-    return;
-  }
-
-  const crossedWaterSurface = block.previousWaterBottomY > water.position.y && box.min.y <= water.position.y;
-  block.previousWaterBottomY = box.min.y;
-  if (!crossedWaterSurface) {
-    return;
-  }
-
-  block.hasSplashed = true;
-  const center = box.getCenter(new THREE.Vector3());
-  spawnBlockWaterSplash(
-    new THREE.Vector3(center.x, water.position.y, center.z),
-    Math.abs(block.velocity.y),
-    Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 1),
-  );
-}
-
-function spawnBlockWaterSplash(position, impactSpeed, impactSize) {
-  if (!water) {
-    return;
-  }
-
-  const strength = THREE.MathUtils.clamp(
-    0.7 + impactSpeed * WATER_SPLASH_IMPACT_SPEED_RESPONSE,
-    0.8,
-    2.2,
-  );
-  const ringRadius = Math.max(impactSize * 0.34, 0.9);
-  const ringGeometry = new THREE.RingGeometry(0.78, 1, 72);
-  const ringMaterial = new THREE.MeshBasicMaterial({
-    color: 0xcff8ff,
-    depthWrite: false,
-    opacity: 0.75,
-    side: THREE.DoubleSide,
-    transparent: true,
-  });
-  const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-
-  ring.position.set(position.x, water.position.y + 0.08, position.z);
-  ring.rotation.x = -Math.PI / 2;
-  ring.renderOrder = 4;
-  ring.scale.setScalar(ringRadius);
-  scene.add(ring);
-
-  splashEffects.push({
-    age: 0,
-    endScale: ringRadius * WATER_SPLASH_RING_EXPANSION * strength,
-    lifetime: WATER_SPLASH_RING_DURATION,
-    material: ringMaterial,
-    mesh: ring,
-    startScale: ringRadius,
-    type: 'ring',
-  });
-
-  const particleCount = Math.round(WATER_SPLASH_PARTICLE_COUNT * THREE.MathUtils.clamp(strength, 0.8, 1.8));
-  for (let index = 0; index < particleCount; index += 1) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = Math.random() * ringRadius * 0.8;
-    const lateralSpeed = THREE.MathUtils.randFloat(0.9, 3.2) * strength;
-    const liftSpeed = THREE.MathUtils.randFloat(2.2, 5.8) * strength;
-    const lifetime = THREE.MathUtils.randFloat(
-      WATER_SPLASH_DURATION_RANGE[0],
-      WATER_SPLASH_DURATION_RANGE[1],
-    );
-    const opacity = THREE.MathUtils.randFloat(0.46, 0.9);
-    const initialScale = THREE.MathUtils.randFloat(0.16, 0.42) * strength;
-    const material = new THREE.SpriteMaterial({
-      color: 0xe5fbff,
-      depthWrite: false,
-      map: splashTexture,
-      opacity,
-      transparent: true,
-    });
-    const sprite = new THREE.Sprite(material);
-
-    sprite.position.set(
-      position.x + Math.cos(angle) * radius,
-      water.position.y + THREE.MathUtils.randFloat(0.08, 0.35),
-      position.z + Math.sin(angle) * radius,
-    );
-    sprite.scale.setScalar(initialScale);
-    scene.add(sprite);
-
-    splashEffects.push({
-      age: 0,
-      initialOpacity: opacity,
-      initialScale,
-      lifetime,
-      material,
-      sprite,
-      type: 'spray',
-      velocity: new THREE.Vector3(
-        Math.cos(angle) * lateralSpeed,
-        liftSpeed,
-        Math.sin(angle) * lateralSpeed,
-      ),
-    });
-  }
-}
-
-function updateSplashEffects(delta) {
-  for (let index = splashEffects.length - 1; index >= 0; index -= 1) {
-    const effect = splashEffects[index];
-    effect.age += delta;
-
-    if (effect.age >= effect.lifetime) {
-      removeSplashEffect(index);
-      continue;
-    }
-
-    const progress = effect.age / effect.lifetime;
-    const fade = Math.pow(1 - progress, 1.4);
-
-    if (effect.type === 'ring') {
-      const scale = THREE.MathUtils.lerp(effect.startScale, effect.endScale, easeOutCubic(progress));
-      effect.mesh.scale.setScalar(scale);
-      effect.material.opacity = 0.75 * fade;
-      continue;
-    }
-
-    effect.velocity.y -= WATER_SPLASH_GRAVITY * delta;
-    effect.sprite.position.addScaledVector(effect.velocity, delta);
-    effect.sprite.scale.setScalar(effect.initialScale * (1 + progress * 1.6));
-    effect.material.opacity = effect.initialOpacity * fade;
-  }
-}
-
-function easeOutCubic(progress) {
-  const t = THREE.MathUtils.clamp(progress, 0, 1);
-  return 1 - Math.pow(1 - t, 3);
-}
-
-function clearSplashEffects() {
-  for (let index = splashEffects.length - 1; index >= 0; index -= 1) {
-    removeSplashEffect(index);
-  }
-}
-
-function removeSplashEffect(index) {
-  const [effect] = splashEffects.splice(index, 1);
-
-  if (effect.type === 'ring') {
-    effect.mesh.removeFromParent();
-    effect.mesh.geometry.dispose();
-    effect.material.dispose();
-    return;
-  }
-
-  effect.sprite.removeFromParent();
-  effect.material.dispose();
 }
 
 function updateLandingScreenEffect(delta) {
@@ -3720,7 +3456,6 @@ function startIntroCameraAnimation() {
   );
 
   if (topTargetY <= defaultTarget.y + 0.01) {
-    startIntroHangingLoadDescend();
     return;
   }
 
@@ -3741,7 +3476,7 @@ function startIntroCameraAnimation() {
   ));
   controls.update();
   updateCameraSlider();
-  updateFloatingShip(clock.elapsedTime, 0);
+  updateFloatingShip(clock.elapsedTime);
 }
 
 function finishIntroCameraAnimation() {
@@ -3756,7 +3491,6 @@ function finishIntroCameraAnimation() {
   introCameraAnimation = null;
   controls.update();
   updateCameraSlider();
-  startIntroHangingLoadDescend();
 }
 
 function updateIntroCamera(delta) {
@@ -4171,7 +3905,7 @@ function animate() {
   const elapsedSeconds = clock.elapsedTime;
   const isIntroCameraActive = updateIntroCamera(deltaSeconds);
   updateTruckFollowers(elapsedSeconds);
-  updateFloatingShip(elapsedSeconds, deltaSeconds);
+  updateFloatingShip(elapsedSeconds);
   updateHangingLoad(elapsedSeconds, deltaSeconds);
   updateWater(elapsedSeconds);
   updateStackAnimation(deltaSeconds);
@@ -4183,7 +3917,6 @@ function animate() {
   controls.update();
   updateImportedSkybox(elapsedSeconds);
   updateDustParticles(deltaSeconds);
-  updateSplashEffects(deltaSeconds);
   updateCameraSlider();
   updateFps(deltaSeconds);
   updateLandingScreenEffect(deltaSeconds);
