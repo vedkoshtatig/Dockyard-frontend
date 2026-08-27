@@ -1,7 +1,0 @@
-- main [ref=e2]:
-  - generic "Scene controls":
-    - generic [ref=e4]: Dockyard Stack
-    - generic [ref=e7]:
-      - button "Reset view" [ref=e8] [cursor=pointer]
-      - button "Fullscreen" [ref=e12] [cursor=pointer]
-  - status [ref=e18]: Loading dockyard file 96%

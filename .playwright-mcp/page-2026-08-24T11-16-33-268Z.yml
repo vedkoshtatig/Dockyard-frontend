@@ -1,6 +1,0 @@
-- main [ref=f6e2]:
-  - generic "Scene controls":
-    - generic [ref=f6e4]: Dockyard Stack
-    - generic [ref=f6e7]:
-      - button "Reset view" [ref=f6e8] [cursor=pointer]
-      - button "Fullscreen" [ref=f6e12] [cursor=pointer]

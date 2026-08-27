@@ -1,3 +1,0 @@
-[  390686ms] [WARNING] Falling blocks failed to load. ReferenceError: getStackParent is not defined
-    at setupFallingBlockStack (http://127.0.0.1:5174/src/main.js?t=1787665323821:2096:5)
-    at async http://127.0.0.1:5174/src/main.js?t=1787665323821:3372:7 @ http://127.0.0.1:5174/src/main.js?t=1787665323821:3375

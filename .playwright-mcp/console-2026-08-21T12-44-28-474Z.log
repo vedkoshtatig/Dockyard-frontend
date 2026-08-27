@@ -1,7 +1,0 @@
-[   54032ms] [WARNING] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. @ http://127.0.0.1:5173/@vite/client:532
-[   84826ms] [WARNING] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. @ http://127.0.0.1:5173/@vite/client:532
-[   93916ms] [WARNING] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. @ http://127.0.0.1:5173/@vite/client:532
-[   96703ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/@vite/client:532
-[  128570ms] [WARNING] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. @ http://127.0.0.1:5173/@vite/client:532
-[  133877ms] [WARNING] No roadn path found for truck animation. @ http://127.0.0.1:5173/@vite/client:532
-[  342388ms] [LOG] [vite] server connection lost. Polling for restart... @ http://127.0.0.1:5173/@vite/client:1002
