@@ -15,13 +15,13 @@ import {
   AMBIENT_BOAT_COUNT,
   AMBIENT_BOAT_EDGE_PADDING,
   AMBIENT_BOAT_FORWARD_OFFSET,
-  AMBIENT_BOAT_LANE_FLATTENING_RANGE,
   AMBIENT_BOAT_LANE_RADIUS_RANGE,
   AMBIENT_BOAT_LENGTH_RANGE,
   AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS,
   AMBIENT_BOAT_MODEL_URL,
   AMBIENT_BOAT_SPEED_RANGE,
   AMBIENT_BOAT_WATER_OFFSET,
+  WATER_BOAT_WAKE_MAX_COUNT,
 } from '../core/constants.js';
 
 const tempBox = new THREE.Box3();
@@ -29,6 +29,23 @@ const tempSize = new THREE.Vector3();
 const tempCenter = new THREE.Vector3();
 const tempPosition = new THREE.Vector3();
 const tempNextPosition = new THREE.Vector3();
+const tempPlanarDirection = new THREE.Vector2();
+
+const BOAT_MAIN_AREA_FOCUS_CHANCE = 0.96;
+const BOAT_OUTER_OCEAN_RADIUS_MULTIPLIER = 1.85;
+const BOAT_FOCUS_RADIUS_MULTIPLIER = 1.15;
+const BOAT_ROUTE_MIN_TURN = 0.28;
+const BOAT_ROUTE_MAX_TURN = 0.92;
+const BOAT_MIN_ROUTE_DISTANCE = 80;
+const BOAT_MIN_SEPARATION = 42;
+const BOAT_DOCK_CLEARANCE_SCALE = 0.42;
+const BOAT_TURN_SPEED_RANGE = [0.42, 0.82];
+const BOAT_TEMPLATE_NAME_PATTERN = /boat|ship|vessel|yacht|sail[_\s-]?boat|jet[_\s-]?ski/i;
+const TEMPLATE_CONTAINER_NAME_PATTERN = /sketchfab|rootnode|pack|collection/i;
+const DARK_AMBIENT_BOAT_MATERIAL_NAMES = new Set([
+  'Low_Poly_Boat_02SG',
+  'Low_Poly_Boat_05SG',
+]);
 
 function randomRange([min, max]) {
   return THREE.MathUtils.randFloat(min, max);
@@ -52,6 +69,122 @@ function countRenderableMeshes(object) {
   });
 
   return count;
+}
+
+function objectMaterialNames(object) {
+  if (!object.material) return [];
+  return Array.isArray(object.material)
+    ? object.material.map((material) => material?.name ?? '')
+    : [object.material.name ?? ''];
+}
+
+function getObjectMaterials(object) {
+  if (!object.material) return [];
+  return Array.isArray(object.material) ? object.material : [object.material];
+}
+
+function getObjectSearchText(object, includeDescendants = false) {
+  const parts = [
+    object.name ?? '',
+    ...objectMaterialNames(object),
+  ];
+
+  if (includeDescendants) {
+    object.traverse((child) => {
+      if (child === object) return;
+      parts.push(child.name ?? '', ...objectMaterialNames(child));
+    });
+  }
+
+  return parts.join(' ');
+}
+
+function isTemplateContainerGroup(object) {
+  if (object.isMesh || object.isSkinnedMesh) return false;
+  return TEMPLATE_CONTAINER_NAME_PATTERN.test(object.name ?? '');
+}
+
+function isBoatTemplateCandidate(object, includeDescendants = false) {
+  return BOAT_TEMPLATE_NAME_PATTERN.test(getObjectSearchText(object, includeDescendants));
+}
+
+function isIndividualBoatMesh(object) {
+  if (!object.isMesh && !object.isSkinnedMesh) return false;
+
+  return isBoatTemplateCandidate(object);
+}
+
+function hasDescendantGroupTemplate(object, matcher) {
+  let found = false;
+
+  object.traverse((child) => {
+    if (found || child === object || child.isMesh || child.isSkinnedMesh) return;
+    if (countRenderableMeshes(child) <= 0 || isTemplateContainerGroup(child)) return;
+
+    if (matcher(child, true)) {
+      found = true;
+    }
+  });
+
+  return found;
+}
+
+function countDirectMatchingMeshes(object, matcher) {
+  return object.children.reduce((count, child) => {
+    if (!child.isMesh && !child.isSkinnedMesh) return count;
+    return matcher(child) ? count + 1 : count;
+  }, 0);
+}
+
+function findLeafGroupTemplates(sceneRoot, matcher) {
+  const templates = [];
+
+  sceneRoot.traverse((object) => {
+    if (object === sceneRoot || object.isMesh || object.isSkinnedMesh) return;
+    if (countRenderableMeshes(object) <= 0 || isTemplateContainerGroup(object)) return;
+    if (!matcher(object, true)) return;
+    if (hasDescendantGroupTemplate(object, matcher)) return;
+    if (countDirectMatchingMeshes(object, matcher) > 1) return;
+
+    templates.push(object);
+  });
+
+  return templates;
+}
+
+function findLeafMeshTemplates(sceneRoot, matcher) {
+  const templates = [];
+
+  sceneRoot.traverse((object) => {
+    if ((!object.isMesh && !object.isSkinnedMesh) || countRenderableMeshes(object) <= 0) return;
+    if (matcher(object)) {
+      templates.push(object);
+    }
+  });
+
+  return templates;
+}
+
+function brightenDarkBoatMaterials(object) {
+  object.traverse((child) => {
+    if (!child.isMesh && !child.isSkinnedMesh) return;
+
+    for (const material of getObjectMaterials(child)) {
+      if (!material || !DARK_AMBIENT_BOAT_MATERIAL_NAMES.has(material.name)) continue;
+
+      if (material.color?.isColor) {
+        material.color.multiplyScalar(1.85);
+      }
+      if (material.emissive?.isColor) {
+        material.emissive.setRGB(0.18, 0.2, 0.2);
+        material.emissiveIntensity = 0.42;
+      }
+      if ('roughness' in material) {
+        material.roughness = Math.min(material.roughness ?? 1, 0.62);
+      }
+      material.needsUpdate = true;
+    }
+  });
 }
 
 function cloneMaterialForAmbient(material, options, materialCache) {
@@ -179,10 +312,38 @@ function orientAlongPlanarMotion(object, from, to, forwardOffset = 0) {
   object.rotation.y = Math.atan2(deltaX, deltaZ) + forwardOffset;
 }
 
+function planarHeadingToPoint(from, to) {
+  return Math.atan2(to.x - from.x, to.y - from.y);
+}
+
+function moveDirectionFromHeading(target, heading) {
+  target.set(Math.sin(heading), Math.cos(heading));
+}
+
+function rotateHeadingToward(current, target, maxStep) {
+  const delta = THREE.MathUtils.euclideanModulo(target - current + Math.PI, Math.PI * 2) - Math.PI;
+  return current + THREE.MathUtils.clamp(delta, -maxStep, maxStep);
+}
+
+function randomRadiusBetween(min, max, bias = 1) {
+  const t = Math.pow(Math.random(), bias);
+  return THREE.MathUtils.lerp(min, max, t);
+}
+
+function pointDistanceSquared(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
 function clearGroup(group) {
   while (group.children.length) {
     group.remove(group.children[0]);
   }
+}
+
+function getTemplateDisplayName(template) {
+  return template.name || template.type || 'unnamed_template';
 }
 
 export function createAmbientLifeSystem({
@@ -206,6 +367,7 @@ export function createAmbientLifeSystem({
   const boats = [];
   const mixers = [];
   let loadPromise = null;
+  let boatTemplateNames = [];
 
   function getWaterInfo() {
     const water = getWater();
@@ -242,6 +404,95 @@ export function createAmbientLifeSystem({
 
     tempBox.getSize(tempSize);
     return Math.max(tempSize.x, tempSize.z) * 0.5 + AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS;
+  }
+
+  function getBoatRouteBounds(waterInfo = getWaterInfo()) {
+    const modelCenter = getModelCenter();
+    const waterRadius = Math.max(AMBIENT_BOAT_LANE_RADIUS_RANGE[1], waterInfo.halfSize - AMBIENT_BOAT_EDGE_PADDING);
+    const minRadius = Math.min(
+      waterRadius - BOAT_MIN_ROUTE_DISTANCE,
+      Math.max(AMBIENT_BOAT_LANE_RADIUS_RANGE[0], getModelClearanceRadius() * BOAT_DOCK_CLEARANCE_SCALE),
+    );
+    const focusRadius = Math.min(
+      waterRadius,
+      Math.max(minRadius + 360, AMBIENT_BOAT_LANE_RADIUS_RANGE[1] * BOAT_FOCUS_RADIUS_MULTIPLIER),
+    );
+    const maxRadius = Math.min(
+      waterRadius,
+      Math.max(focusRadius + 280, AMBIENT_BOAT_LANE_RADIUS_RANGE[1] * BOAT_OUTER_OCEAN_RADIUS_MULTIPLIER),
+    );
+
+    return {
+      center: new THREE.Vector2(modelCenter.x, modelCenter.z),
+      minRadius: Math.max(minRadius, 1),
+      focusRadius,
+      maxRadius,
+    };
+  }
+
+  function isBoatPointSeparated(point, minDistance, excludedBoat = null) {
+    const minDistanceSquared = minDistance * minDistance;
+
+    return boats.every((boat) => {
+      if (boat === excludedBoat) return true;
+      if (boat.position && pointDistanceSquared(point, boat.position) < minDistanceSquared) return false;
+      if (boat.target && pointDistanceSquared(point, boat.target) < minDistanceSquared) return false;
+      return true;
+    });
+  }
+
+  function sampleBoatOceanPoint(routeBounds, {
+    angle = Math.random() * Math.PI * 2,
+    angleJitter = Math.PI * 2,
+    excludedBoat = null,
+    minSeparation = BOAT_MIN_SEPARATION,
+    preferFocus = Math.random() < BOAT_MAIN_AREA_FOCUS_CHANCE,
+  } = {}) {
+    let fallback = null;
+
+    for (let attempt = 0; attempt < 36; attempt += 1) {
+      const useFocus = attempt < 22 ? preferFocus : Math.random() < BOAT_MAIN_AREA_FOCUS_CHANCE;
+      const radiusMax = useFocus ? routeBounds.focusRadius : routeBounds.maxRadius;
+      const radiusMin = Math.min(routeBounds.minRadius, radiusMax - 1);
+      const routeAngle = angle + THREE.MathUtils.randFloatSpread(angleJitter);
+      const radius = randomRadiusBetween(radiusMin, radiusMax, useFocus ? 2.2 : 0.82);
+      const point = new THREE.Vector2(
+        routeBounds.center.x + Math.cos(routeAngle) * radius,
+        routeBounds.center.y + Math.sin(routeAngle) * radius,
+      );
+
+      fallback = point;
+      if (isBoatPointSeparated(point, minSeparation, excludedBoat)) {
+        return point;
+      }
+    }
+
+    return fallback ?? routeBounds.center.clone();
+  }
+
+  function chooseNextBoatTarget(boat) {
+    const routeBounds = getBoatRouteBounds();
+    const currentAngle = Math.atan2(
+      boat.position.y - routeBounds.center.y,
+      boat.position.x - routeBounds.center.x,
+    );
+    const turnDirection = Math.random() < 0.5 ? -1 : 1;
+    let target = null;
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const turn = THREE.MathUtils.randFloat(BOAT_ROUTE_MIN_TURN, BOAT_ROUTE_MAX_TURN) * turnDirection;
+      target = sampleBoatOceanPoint(routeBounds, {
+        angle: currentAngle + turn,
+        angleJitter: 0.28 + attempt * 0.1,
+        excludedBoat: boat,
+        minSeparation: BOAT_MIN_SEPARATION,
+        preferFocus: Math.random() < BOAT_MAIN_AREA_FOCUS_CHANCE,
+      });
+
+      if (target.distanceTo(boat.position) >= BOAT_MIN_ROUTE_DISTANCE) break;
+    }
+
+    boat.target.copy(target);
   }
 
   function findBirdTemplates(sceneRoot) {
@@ -382,10 +633,15 @@ export function createAmbientLifeSystem({
   }
 
   function findBoatTemplates(sceneRoot) {
-    const templates = [];
+    const groupTemplates = findLeafGroupTemplates(sceneRoot, isBoatTemplateCandidate);
+    if (groupTemplates.length) return groupTemplates;
 
+    const meshTemplates = findLeafMeshTemplates(sceneRoot, isIndividualBoatMesh);
+    if (meshTemplates.length) return meshTemplates;
+
+    const templates = [];
     sceneRoot.traverse((object) => {
-      if (object.isMesh && countRenderableMeshes(object) > 0) {
+      if ((object.isMesh || object.isSkinnedMesh) && countRenderableMeshes(object) > 0) {
         templates.push(object);
       }
     });
@@ -393,7 +649,7 @@ export function createAmbientLifeSystem({
     return templates.length ? templates : [sceneRoot];
   }
 
-  function createBoatInstance(template, index) {
+  function createBoatInstance(template, index, targetLength) {
     const boat = cloneObjectWithWorldTransform(template);
     boat.name = `ambient_boat_model_${index + 1}`;
 
@@ -405,66 +661,109 @@ export function createAmbientLifeSystem({
       roughness: 0.78,
     });
     centerObjectOnWaterline(boat);
-    scaleObjectToDimension(boat, randomRange(AMBIENT_BOAT_LENGTH_RANGE), true);
+    scaleObjectToDimension(boat, targetLength, true);
+    brightenDarkBoatMaterials(boat);
 
     return boat;
   }
 
-  function createBoatLane(template, index) {
+  function createBoatVoyage(template, index) {
     const waterInfo = getWaterInfo();
-    const modelClearanceRadius = getModelClearanceRadius();
-    const maxWaterRadius = Math.max(
-      AMBIENT_BOAT_LANE_RADIUS_RANGE[0] + 40,
-      waterInfo.halfSize - AMBIENT_BOAT_EDGE_PADDING,
-    );
-    const minLaneRadius = Math.min(
-      maxWaterRadius - 32,
-      Math.max(AMBIENT_BOAT_LANE_RADIUS_RANGE[0], modelClearanceRadius),
-    );
-    const maxLaneRadius = Math.max(
-      minLaneRadius + 32,
-      Math.min(AMBIENT_BOAT_LANE_RADIUS_RANGE[1], maxWaterRadius),
-    );
-    const orbitRadius = THREE.MathUtils.randFloat(minLaneRadius, maxLaneRadius);
-    const flattenA = randomRange(AMBIENT_BOAT_LANE_FLATTENING_RANGE);
-    const flattenB = randomRange(AMBIENT_BOAT_LANE_FLATTENING_RANGE);
+    const routeBounds = getBoatRouteBounds(waterInfo);
+    const initialAngle = (index / Math.max(AMBIENT_BOAT_COUNT, 1)) * Math.PI * 2
+      + THREE.MathUtils.randFloatSpread(0.52);
+    const startPosition = sampleBoatOceanPoint(routeBounds, {
+      angle: initialAngle,
+      angleJitter: 0.42,
+      minSeparation: BOAT_MIN_SEPARATION,
+      preferFocus: index % 5 !== 0,
+    });
+    const length = randomRange(AMBIENT_BOAT_LENGTH_RANGE);
+    const speed = randomRange(AMBIENT_BOAT_SPEED_RANGE);
     const boat = {
-      angle: (index / Math.max(AMBIENT_BOAT_COUNT, 1)) * Math.PI * 2 + THREE.MathUtils.randFloatSpread(0.42),
-      center: waterInfo.center,
-      direction: Math.random() < 0.5 ? -1 : 1,
       group: new THREE.Group(),
+      heading: 0,
       heaveAmount: THREE.MathUtils.randFloat(0.08, 0.24),
       heaveSpeed: THREE.MathUtils.randFloat(0.72, 1.15),
+      moveDirection: new THREE.Vector2(0, 1),
       phase: Math.random() * Math.PI * 2,
+      position: startPosition,
       pitchAmount: THREE.MathUtils.randFloat(0.008, 0.026),
       pitchSpeed: THREE.MathUtils.randFloat(0.5, 0.9),
-      radiusX: Math.min(maxLaneRadius, orbitRadius * flattenA),
-      radiusZ: Math.min(maxLaneRadius, orbitRadius * flattenB),
       rollAmount: THREE.MathUtils.randFloat(0.018, 0.048),
       rollSpeed: THREE.MathUtils.randFloat(0.62, 1.05),
-      speed: randomRange(AMBIENT_BOAT_SPEED_RANGE),
+      speed,
+      target: startPosition.clone(),
+      turnSpeed: randomRange(BOAT_TURN_SPEED_RANGE),
+      wakeDirection: new THREE.Vector2(0, 1),
+      wakeLength: THREE.MathUtils.clamp(length * 4.8, 48, 108),
+      wakePosition: new THREE.Vector2(),
+      wakeStrength: THREE.MathUtils.clamp(speed / AMBIENT_BOAT_SPEED_RANGE[1], 0.52, 0.95),
+      wakeWidth: THREE.MathUtils.clamp(length * 0.16, 1.8, 4.8),
     };
 
     boat.group.name = `ambient_boat_${index + 1}`;
-    boat.group.add(createBoatInstance(template, index));
+    boat.group.add(createBoatInstance(template, index, length));
+    chooseNextBoatTarget(boat);
+    boat.heading = planarHeadingToPoint(boat.position, boat.target);
+    moveDirectionFromHeading(boat.moveDirection, boat.heading);
     updateBoat(boat, 0, 0);
     boatsRoot.add(boat.group);
     boats.push(boat);
   }
 
+  function updateBoatWakeUniforms() {
+    const water = getWater();
+    const uniforms = water?.material?.uniforms;
+    const wakeDataA = uniforms?.boatWakeDataA?.value;
+    const wakeDataB = uniforms?.boatWakeDataB?.value;
+
+    if (!uniforms?.boatWakeCount || !Array.isArray(wakeDataA) || !Array.isArray(wakeDataB)) {
+      return;
+    }
+
+    const wakeCount = Math.min(boats.length, wakeDataA.length, wakeDataB.length, WATER_BOAT_WAKE_MAX_COUNT);
+    uniforms.boatWakeCount.value = wakeCount;
+
+    for (let index = 0; index < wakeCount; index += 1) {
+      const boat = boats[index];
+      wakeDataA[index].set(
+        boat.wakePosition.x,
+        boat.wakePosition.y,
+        boat.wakeLength,
+        boat.wakeStrength,
+      );
+      wakeDataB[index].set(
+        boat.wakeDirection.x,
+        boat.wakeDirection.y,
+        boat.wakeWidth,
+        boat.speed,
+      );
+    }
+
+    for (let index = wakeCount; index < wakeDataA.length && index < wakeDataB.length; index += 1) {
+      wakeDataA[index].set(9999, 9999, 0, 0);
+      wakeDataB[index].set(0, 1, 0, 0);
+    }
+  }
+
   function setupBoats(gltf) {
     clearGroup(boatsRoot);
     boats.length = 0;
+    boatTemplateNames = [];
+    updateBoatWakeUniforms();
 
     const templates = findBoatTemplates(gltf.scene);
     if (!templates.length) {
       console.warn('No boat templates found in ambient boat model.');
       return;
     }
+    boatTemplateNames = templates.map(getTemplateDisplayName);
 
     for (let index = 0; index < AMBIENT_BOAT_COUNT; index += 1) {
-      createBoatLane(templates[index % templates.length], index);
+      createBoatVoyage(templates[index % templates.length], index);
     }
+    updateBoatWakeUniforms();
   }
 
   function updateBirdFlock(flock, elapsedSeconds, deltaSeconds) {
@@ -499,25 +798,82 @@ export function createAmbientLifeSystem({
 
   function updateBoat(boat, elapsedSeconds, deltaSeconds) {
     const waterInfo = getWaterInfo();
-    const radiusAverage = Math.max((boat.radiusX + boat.radiusZ) * 0.5, 1);
-    boat.angle += (boat.speed / radiusAverage) * boat.direction * deltaSeconds;
+    tempPlanarDirection.copy(boat.target).sub(boat.position);
+    let targetDistance = tempPlanarDirection.length();
+
+    if (targetDistance < Math.max(8, boat.speed * deltaSeconds * 2)) {
+      chooseNextBoatTarget(boat);
+      tempPlanarDirection.copy(boat.target).sub(boat.position);
+      targetDistance = tempPlanarDirection.length();
+    }
+
+    if (targetDistance > 0.0001) {
+      const desiredHeading = planarHeadingToPoint(boat.position, boat.target);
+      boat.heading = rotateHeadingToward(boat.heading, desiredHeading, boat.turnSpeed * deltaSeconds);
+    }
+
+    moveDirectionFromHeading(boat.moveDirection, boat.heading);
+    const moveDistance = Math.min(targetDistance, boat.speed * deltaSeconds);
+    boat.position.addScaledVector(boat.moveDirection, moveDistance);
 
     const waterY = waterInfo.level + AMBIENT_BOAT_WATER_OFFSET;
     const heave = Math.sin(elapsedSeconds * boat.heaveSpeed + boat.phase) * boat.heaveAmount;
-    setOrbitPosition(tempPosition, boat.center, boat.radiusX, boat.radiusZ, boat.angle, waterY + heave);
-    setOrbitPosition(
-      tempNextPosition,
-      boat.center,
-      boat.radiusX,
-      boat.radiusZ,
-      boat.angle + boat.direction * 0.01,
+    tempPosition.set(boat.position.x, waterY + heave, boat.position.y);
+    tempNextPosition.set(
+      boat.position.x + boat.moveDirection.x,
       waterY + heave,
+      boat.position.y + boat.moveDirection.y,
     );
 
     boat.group.position.copy(tempPosition);
+    boat.wakeDirection.copy(boat.moveDirection);
+    boat.wakePosition.set(tempPosition.x, tempPosition.z);
+
     orientAlongPlanarMotion(boat.group, tempPosition, tempNextPosition, AMBIENT_BOAT_FORWARD_OFFSET);
     boat.group.rotation.x = Math.sin(elapsedSeconds * boat.pitchSpeed + boat.phase) * boat.pitchAmount;
     boat.group.rotation.z = Math.sin(elapsedSeconds * boat.rollSpeed + boat.phase) * boat.rollAmount;
+  }
+
+  function getBoatDistanceStats() {
+    const center = getModelCenter();
+    const distances = boats.map((boat) => Math.hypot(
+      boat.group.position.x - center.x,
+      boat.group.position.z - center.z,
+    ));
+
+    if (!distances.length) {
+      return null;
+    }
+
+    const total = distances.reduce((sum, distance) => sum + distance, 0);
+
+    return {
+      average: total / distances.length,
+      max: Math.max(...distances),
+      min: Math.min(...distances),
+    };
+  }
+
+  function getBoatHeadingAlignmentStats() {
+    const alignments = boats.map((boat) => {
+      const noseDirection = new THREE.Vector2(
+        Math.cos(boat.group.rotation.y),
+        -Math.sin(boat.group.rotation.y),
+      );
+      return noseDirection.dot(boat.moveDirection);
+    });
+
+    if (!alignments.length) {
+      return null;
+    }
+
+    const total = alignments.reduce((sum, alignment) => sum + alignment, 0);
+
+    return {
+      average: total / alignments.length,
+      max: Math.max(...alignments),
+      min: Math.min(...alignments),
+    };
   }
 
   function installDebugHelpers() {
@@ -531,6 +887,12 @@ export function createAmbientLifeSystem({
         birdCount: flocks.reduce((count, flock) => count + flock.birds.length, 0),
         birdFlockCount: flocks.length,
         boatCount: boats.length,
+        boatDistanceStats: getBoatDistanceStats(),
+        boatHeadingAlignmentStats: getBoatHeadingAlignmentStats(),
+        boatMeshCounts: boats.map((boat) => countRenderableMeshes(boat.group)),
+        boatTemplateNames,
+        boatWakeCapacity: getWater()?.material?.uniforms?.boatWakeDataA?.value?.length ?? null,
+        boatWakeCount: getWater()?.material?.uniforms?.boatWakeCount?.value ?? null,
         firstBirdPosition: flocks[0]?.group.position.toArray() ?? null,
         firstBoatPosition: boats[0]?.group.position.toArray() ?? null,
       }),
@@ -549,6 +911,7 @@ export function createAmbientLifeSystem({
     for (const boat of boats) {
       updateBoat(boat, elapsedSeconds, frameDelta);
     }
+    updateBoatWakeUniforms();
   }
 
   function load(loader) {

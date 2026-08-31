@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   WATER_ANIMATION_SPEED,
+  WATER_BOAT_WAKE_MAX_COUNT,
   WATER_EDGE_PADDING,
   WATER_QUALITY,
   WATER_SETTINGS,
@@ -15,6 +16,20 @@ function materialNameForIndex(material, index) {
   }
 
   return material?.name ?? '';
+}
+
+function createBoatWakeDataA() {
+  return Array.from(
+    { length: WATER_BOAT_WAKE_MAX_COUNT },
+    () => new THREE.Vector4(9999, 9999, 0, 0),
+  );
+}
+
+function createBoatWakeDataB() {
+  return Array.from(
+    { length: WATER_BOAT_WAKE_MAX_COUNT },
+    () => new THREE.Vector4(0, 1, 0, 0),
+  );
 }
 
 function getMaterialBounds(root, materialNames) {
@@ -69,12 +84,17 @@ function createWaterMaterial(dockBounds, sunLight) {
       shipCenter: { value: new THREE.Vector2(9999, 9999) },
       shipHalfSize: { value: new THREE.Vector2(1, 1) },
       shipWakeStrength: { value: 0 },
+      boatWakeCount: { value: 0 },
+      boatWakeDataA: { value: createBoatWakeDataA() },
+      boatWakeDataB: { value: createBoatWakeDataB() },
       sunDirection: { value: sunLight.position.clone().normalize() },
       normalIntensity: { value: quality.normalIntensity },
       foamIntensity: { value: quality.foamIntensity },
       reflectionStrength: { value: quality.reflectionStrength },
     },
     vertexShader: `
+      #define BOAT_WAKE_MAX_COUNT ${WATER_BOAT_WAKE_MAX_COUNT}
+
       varying vec3 vWorldPosition;
       varying vec2 vUv;
       varying float vWave;
@@ -86,6 +106,9 @@ function createWaterMaterial(dockBounds, sunLight) {
       uniform vec2 shipCenter;
       uniform vec2 shipHalfSize;
       uniform float shipWakeStrength;
+      uniform float boatWakeCount;
+      uniform vec4 boatWakeDataA[BOAT_WAKE_MAX_COUNT];
+      uniform vec4 boatWakeDataB[BOAT_WAKE_MAX_COUNT];
 
       float waveLayer(vec2 point, vec2 direction, float frequency, float speed, float amplitude, float steepness) {
         float phase = dot(point, normalize(direction)) * frequency + time * speed;
@@ -135,6 +158,39 @@ function createWaterMaterial(dockBounds, sunLight) {
           + centerPulseRing(point, 21.0, 5.41, 145.0, 9.0, 0.42);
       }
 
+      float boatWakeActivity(int index) {
+        return 1.0 - step(boatWakeCount, float(index));
+      }
+
+      float boatWakeHeight(vec2 point) {
+        float wakeHeight = 0.0;
+
+        for (int index = 0; index < BOAT_WAKE_MAX_COUNT; index += 1) {
+          float wakeActive = boatWakeActivity(index);
+          vec4 wakeA = boatWakeDataA[index];
+          vec4 wakeB = boatWakeDataB[index];
+          vec2 direction = normalize(wakeB.xy);
+          vec2 offset = point - wakeA.xy;
+          float behind = -dot(offset, direction);
+          float side = dot(offset, vec2(-direction.y, direction.x));
+          float trailLength = max(wakeA.z, 1.0);
+          float baseWidth = max(wakeB.z, 0.25);
+          float distanceRatio = clamp(behind / trailLength, 0.0, 1.0);
+          float trailFade = smoothstep(0.0, 4.0, behind) * (1.0 - smoothstep(0.72, 1.0, distanceRatio));
+          float wakeWidth = mix(baseWidth * 0.75, baseWidth * 4.2, distanceRatio);
+          float edgeDistance = abs(side) - wakeWidth * 0.62;
+          float edgeFalloff = exp(-(edgeDistance * edgeDistance) / max(wakeWidth * wakeWidth * 0.2, 0.001));
+          float centerFalloff = exp(-(side * side) / max(wakeWidth * wakeWidth * 0.9, 0.001))
+            * (1.0 - distanceRatio)
+            * 0.32;
+          float ripple = sin(behind * 0.72 + abs(side) * 0.9 - time * (4.4 + wakeB.w * 0.18));
+
+          wakeHeight += wakeActive * wakeA.w * trailFade * (edgeFalloff + centerFalloff) * ripple * 0.42;
+        }
+
+        return wakeHeight;
+      }
+
       void main() {
         vUv = uv;
         vec3 transformed = position;
@@ -143,7 +199,7 @@ function createWaterMaterial(dockBounds, sunLight) {
         float shipDistance = length((waterPoint - shipCenter) / shipScale);
         float shipWake = shipWakeStrength * (1.0 - smoothstep(0.72, 3.8, shipDistance));
         float wakeRipple = sin(shipDistance * 18.0 - time * 4.1) * shipWake * 0.24;
-        vWave = oceanHeight(waterPoint) + centerRippleHeight(waterPoint) * 0.78 + wakeRipple;
+        vWave = oceanHeight(waterPoint) + centerRippleHeight(waterPoint) * 0.78 + wakeRipple + boatWakeHeight(waterPoint);
         vCrest = smoothstep(0.08, 0.52, vWave);
         transformed.z += vWave * 0.08;
 
@@ -153,6 +209,8 @@ function createWaterMaterial(dockBounds, sunLight) {
       }
     `,
     fragmentShader: `
+      #define BOAT_WAKE_MAX_COUNT ${WATER_BOAT_WAKE_MAX_COUNT}
+
       varying vec3 vWorldPosition;
       varying vec2 vUv;
       varying float vWave;
@@ -165,6 +223,9 @@ function createWaterMaterial(dockBounds, sunLight) {
       uniform vec2 shipCenter;
       uniform vec2 shipHalfSize;
       uniform float shipWakeStrength;
+      uniform float boatWakeCount;
+      uniform vec4 boatWakeDataA[BOAT_WAKE_MAX_COUNT];
+      uniform vec4 boatWakeDataB[BOAT_WAKE_MAX_COUNT];
       uniform vec3 sunDirection;
       uniform float normalIntensity;
       uniform float foamIntensity;
@@ -257,6 +318,42 @@ function createWaterMaterial(dockBounds, sunLight) {
           + centerPulseMask(point, 21.0, 5.41, 145.0, 9.8, 0.34);
       }
 
+      float boatWakeActivity(int index) {
+        return 1.0 - step(boatWakeCount, float(index));
+      }
+
+      float boatWakeFoam(vec2 point) {
+        float foam = 0.0;
+
+        for (int index = 0; index < BOAT_WAKE_MAX_COUNT; index += 1) {
+          float wakeActive = boatWakeActivity(index);
+          vec4 wakeA = boatWakeDataA[index];
+          vec4 wakeB = boatWakeDataB[index];
+          vec2 direction = normalize(wakeB.xy);
+          vec2 offset = point - wakeA.xy;
+          float behind = -dot(offset, direction);
+          float side = dot(offset, vec2(-direction.y, direction.x));
+          float absSide = abs(side);
+          float trailLength = max(wakeA.z, 1.0);
+          float baseWidth = max(wakeB.z, 0.25);
+          float distanceRatio = clamp(behind / trailLength, 0.0, 1.0);
+          float trailFade = smoothstep(0.0, 3.6, behind) * (1.0 - smoothstep(0.64, 1.0, distanceRatio));
+          float wakeWidth = mix(baseWidth * 0.85, baseWidth * 5.2, distanceRatio);
+          float edgeDistance = absSide - wakeWidth * 0.72;
+          float leftRight = exp(-(edgeDistance * edgeDistance) / max(wakeWidth * wakeWidth * 0.18, 0.001));
+          float propWash = exp(-(side * side) / max(wakeWidth * wakeWidth * 0.42, 0.001))
+            * (1.0 - smoothstep(0.0, 0.38, distanceRatio))
+            * 0.58;
+          float broken = noise(point * 0.42 + vec2(shimmerTime * -0.44 + float(index) * 13.1, shimmerTime * 0.27));
+          float rib = sin(behind * 0.76 + absSide * 1.35 - shimmerTime * (5.2 + wakeB.w * 0.24)) * 0.5 + 0.5;
+          float breakup = smoothstep(0.28, 0.82, broken * 0.62 + rib * 0.45 + leftRight * 0.34);
+
+          foam += wakeActive * wakeA.w * trailFade * (leftRight * 0.82 + propWash) * breakup;
+        }
+
+        return clamp(foam, 0.0, 1.0);
+      }
+
       void main() {
         vec2 waterPoint = vWorldPosition.xz;
         float signedWallDistance = rectDistance(waterPoint, dockCenter, dockHalfSize);
@@ -306,13 +403,15 @@ function createWaterMaterial(dockBounds, sunLight) {
           * smoothstep(0.5, 0.88, noise(waterPoint * 0.16 + vec2(shimmerTime * -0.12, shimmerTime * 0.09)))
           * foamIntensity;
         float centerFoam = centerRippleFoam(waterPoint) * foamIntensity;
+        float boatWake = boatWakeFoam(waterPoint) * foamIntensity;
         float glint = (sharpSpec * 0.55 + broadSpec * 0.18) * streakMask * (0.28 + crestMask * 0.5) * reflectionStrength;
         vec3 skyReflection = mix(vec3(0.34, 0.58, 0.78), vec3(0.72, 0.9, 1.0), horizonReflection);
 
         color = mix(color, skyReflection, clamp((fresnel * 0.42 + crestMask * 0.08) * reflectionStrength, 0.0, 0.46));
         color += vec3(0.78, 0.9, 0.88) * glint;
         color += vec3(0.08, 0.18, 0.18) * shipRipple * 0.14;
-        color = mix(color, vec3(0.72, 0.86, 0.84), clamp(wallFoam * 0.08 + crestFoam * 0.08 + centerFoam * 0.34 + shipContact * 0.14 + shipRipple * 0.1, 0.0, 0.44));
+        color += vec3(0.05, 0.13, 0.14) * boatWake * 0.08;
+        color = mix(color, vec3(0.72, 0.86, 0.84), clamp(wallFoam * 0.08 + crestFoam * 0.08 + centerFoam * 0.34 + boatWake * 0.28 + shipContact * 0.14 + shipRipple * 0.1, 0.0, 0.5));
 
         gl_FragColor = vec4(color, 1.0);
       }
