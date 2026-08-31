@@ -23,6 +23,9 @@ export function applyManualTextures(root, textureLoader = new THREE.TextureLoade
     if (!object.isMesh) return;
     if (isNamedSkyboxObject(object)) return;
 
+    object.castShadow = true;
+    object.receiveShadow = true;
+
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     for (const material of materials) {
       if (!material) continue;
@@ -39,8 +42,9 @@ export function applyManualTextures(root, textureLoader = new THREE.TextureLoade
 
       material.map = textureCache.get(textureFile);
       material.color.set(0xffffff);
-      material.metalness = 0;
-      material.roughness = 0.82;
+      material.metalness = material.name === 'Material.009' ? 0.12 : 0.02;
+      material.roughness = material.name === 'Material.009' ? 0.58 : 0.76;
+      material.envMapIntensity = 0.62;
       material.needsUpdate = true;
     }
   });

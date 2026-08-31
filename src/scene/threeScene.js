@@ -19,7 +19,9 @@ export function createThreeScene({ canvas, cameraHeightElement }) {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.72;
+  renderer.toneMappingExposure = 0.66;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const environment = new RoomEnvironment(renderer);
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -43,16 +45,32 @@ export function createThreeScene({ canvas, cameraHeightElement }) {
     cameraHeightElement.disabled = LOCK_CAMERA_TO_BLENDER_VIEW;
   }
 
-  const hemiLight = new THREE.HemisphereLight(0xf1f7ff, 0x46545b, 0.85);
+  scene.fog = new THREE.FogExp2(0xaed3e2, 0.00056);
+
+  const hemiLight = new THREE.HemisphereLight(0xe6f5ff, 0x23454b, 0.78);
   scene.add(hemiLight);
 
-  const sunLight = new THREE.DirectionalLight(0xffffff, 1.15);
-  sunLight.position.set(12, 18, 8);
+  const sunLight = new THREE.DirectionalLight(0xffd39b, 2.35);
+  sunLight.position.set(-85, 120, 70);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(2048, 2048);
+  sunLight.shadow.camera.near = 10;
+  sunLight.shadow.camera.far = 360;
+  sunLight.shadow.camera.left = -150;
+  sunLight.shadow.camera.right = 150;
+  sunLight.shadow.camera.top = 150;
+  sunLight.shadow.camera.bottom = -150;
+  sunLight.shadow.bias = -0.00035;
+  sunLight.shadow.normalBias = 0.04;
   scene.add(sunLight);
 
-  const fillLight = new THREE.DirectionalLight(0xcde7ff, 0.3);
-  fillLight.position.set(-10, 8, -12);
+  const fillLight = new THREE.DirectionalLight(0x85d4f2, 0.5);
+  fillLight.position.set(75, 45, -90);
   scene.add(fillLight);
+
+  const horizonLight = new THREE.DirectionalLight(0xff8fae, 0.52);
+  horizonLight.position.set(0, 18, -120);
+  scene.add(horizonLight);
 
   return {
     camera,

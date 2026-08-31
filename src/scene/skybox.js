@@ -34,7 +34,7 @@ export function setupImportedSkybox(root, scene) {
 
     return new THREE.MeshBasicMaterial({
       map,
-      color: map ? 0xffffff : 0x9eb7c1,
+      color: map ? 0xffdce1 : 0xe59aaf,
       side: THREE.DoubleSide,
       depthTest: false,
       depthWrite: false,

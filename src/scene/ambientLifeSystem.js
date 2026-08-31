@@ -24,6 +24,7 @@ import {
   AMBIENT_BOAT_SPEED_RANGE,
   AMBIENT_BOAT_WATER_OFFSET,
   WATER_BOAT_WAKE_MAX_COUNT,
+  WATER_HORIZON_CURVE_START,
 } from '../core/constants.js';
 
 const tempBox = new THREE.Box3();
@@ -33,21 +34,22 @@ const tempPosition = new THREE.Vector3();
 const tempNextPosition = new THREE.Vector3();
 const tempPlanarDirection = new THREE.Vector2();
 
-const BOAT_MAIN_AREA_FOCUS_CHANCE = 0.96;
+const BOAT_MAIN_AREA_FOCUS_CHANCE = 0.82;
 const BOAT_OUTER_OCEAN_RADIUS_MULTIPLIER = 1.85;
 const BOAT_FOCUS_RADIUS_MULTIPLIER = 1.15;
 const BOAT_ROUTE_MIN_TURN = 0.28;
 const BOAT_ROUTE_MAX_TURN = 0.92;
 const BOAT_MIN_ROUTE_DISTANCE = 80;
-const BOAT_MIN_SEPARATION = 42;
-const BOAT_DOCK_CLEARANCE_SCALE = 0.42;
+const BOAT_MIN_SEPARATION = 72;
+const BOAT_DOCK_CLEARANCE_SCALE = 1.08;
 const BOAT_TURN_SPEED_RANGE = [0.42, 0.82];
 const BOAT_TEMPLATE_NAME_PATTERN = /boat|ship|vessel|yacht|sail[_\s-]?boat|jet[_\s-]?ski/i;
 const TEMPLATE_CONTAINER_NAME_PATTERN = /sketchfab|rootnode|pack|collection/i;
 const BIRD_ANIMATION_SPEED_RANGE = [1.35, 2.15];
-const BIRD_DOCK_CLEARANCE_SCALE = 0.78;
+const BIRD_DOCK_CLEARANCE_SCALE = 1.02;
 const BIRD_BIG_FLOCK_INTERVAL = 3;
 const BIRD_SMALL_FLOCK_INTERVAL = 2;
+const BIRD_MIN_FLOCK_SEPARATION = 5.5;
 const DARK_AMBIENT_BOAT_MATERIAL_NAMES = new Set([
   'Low_Poly_Boat_02SG',
   'Low_Poly_Boat_05SG',
@@ -446,7 +448,11 @@ export function createAmbientLifeSystem({
 
   function getBoatRouteBounds(waterInfo = getWaterInfo()) {
     const modelCenter = getModelCenter();
-    const waterRadius = Math.max(AMBIENT_BOAT_LANE_RADIUS_RANGE[1], waterInfo.halfSize - AMBIENT_BOAT_EDGE_PADDING);
+    const meshWaterRadius = Math.max(
+      AMBIENT_BOAT_LANE_RADIUS_RANGE[1],
+      waterInfo.halfSize - AMBIENT_BOAT_EDGE_PADDING,
+    );
+    const waterRadius = Math.min(meshWaterRadius, WATER_HORIZON_CURVE_START - 90);
     const minRadius = Math.min(
       waterRadius - BOAT_MIN_ROUTE_DISTANCE,
       Math.max(AMBIENT_BOAT_LANE_RADIUS_RANGE[0], getModelClearanceRadius() * BOAT_DOCK_CLEARANCE_SCALE),
@@ -595,14 +601,26 @@ export function createAmbientLifeSystem({
 
     const spread = flockSize > 1 ? AMBIENT_BIRD_FLOCK_SPREAD : 0;
     const birdEntries = [];
+    const occupiedPositions = [];
 
     for (let birdIndex = 0; birdIndex < flockSize; birdIndex += 1) {
       const bird = createBirdInstance(template, animations, flockSize > 1);
-      bird.position.set(
-        THREE.MathUtils.randFloatSpread(spread),
-        THREE.MathUtils.randFloatSpread(spread * 0.28),
-        THREE.MathUtils.randFloatSpread(spread * 0.72),
-      );
+      const candidatePosition = new THREE.Vector3();
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        candidatePosition.set(
+          THREE.MathUtils.randFloatSpread(spread),
+          THREE.MathUtils.randFloatSpread(spread * 0.28),
+          THREE.MathUtils.randFloatSpread(spread * 0.72),
+        );
+
+        if (occupiedPositions.every((position) => position.distanceTo(candidatePosition) >= BIRD_MIN_FLOCK_SEPARATION)) {
+          break;
+        }
+      }
+
+      bird.position.copy(candidatePosition);
+      occupiedPositions.push(candidatePosition.clone());
       bird.userData.basePosition = bird.position.clone();
       bird.userData.flightPhase = Math.random() * Math.PI * 2;
       bird.userData.flightSpeed = THREE.MathUtils.randFloat(1.2, 2.2);

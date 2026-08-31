@@ -6,8 +6,13 @@ export const TRUCK_SPACING_UNITS = 16;
 export const MAX_TRUCK_PATH_DISTANCE = 9;
 
 export const WATER_EDGE_PADDING = 0.9;
-export const WATER_SIZE_PADDING = 900;
-export const WATER_SIZE_MULTIPLIER = 4.8;
+export const WATER_SIZE_PADDING = 3000;
+export const WATER_SIZE_MULTIPLIER = 6.5;
+// Keep the playable water flat, then bend the distant surface below the
+// horizon so the finite mesh cannot draw a hard line across the skybox.
+export const WATER_HORIZON_CURVE_START = 520;
+export const WATER_HORIZON_CURVE_RADIUS = 900;
+export const WATER_HORIZON_BLEND_DISTANCE = 240;
 export const SHIP_WAKE_PADDING = 10;
 export const WATER_ANIMATION_SPEED = 1.65;
 export const WATER_SHIMMER_SPEED = 0.55;
@@ -18,24 +23,24 @@ export const SKYBOX_TEXTURE_SCROLL_SPEED = 0.002;
 export const AMBIENT_BIRD_MODEL_URL = 'birds.glb';
 export const AMBIENT_BIRD_FLOCK_COUNT = 11;
 export const AMBIENT_BIRD_SINGLE_COUNT = 12;
-export const AMBIENT_BIRD_FLOCK_SIZE_RANGE = [3, 5];
+export const AMBIENT_BIRD_FLOCK_SIZE_RANGE = [2, 4];
 export const AMBIENT_BIRD_SMALL_FLOCK_SIZE_RANGE = [2, 3];
-export const AMBIENT_BIRD_BIG_FLOCK_SIZE_RANGE = [6, 9];
-export const AMBIENT_BIRD_FLOCK_SPREAD = 18;
-export const AMBIENT_BIRD_AREA_RADIUS = 820;
-export const AMBIENT_BIRD_MIN_RADIUS = 230;
-export const AMBIENT_BIRD_HEIGHT_RANGE = [75, 165];
-export const AMBIENT_BIRD_SIZE_RANGE = [1.05, 2.15];
+export const AMBIENT_BIRD_BIG_FLOCK_SIZE_RANGE = [4, 6];
+export const AMBIENT_BIRD_FLOCK_SPREAD = 32;
+export const AMBIENT_BIRD_AREA_RADIUS = 920;
+export const AMBIENT_BIRD_MIN_RADIUS = 320;
+export const AMBIENT_BIRD_HEIGHT_RANGE = [88, 180];
+export const AMBIENT_BIRD_SIZE_RANGE = [0.85, 1.75];
 export const AMBIENT_BIRD_ORBIT_SPEED_RANGE = [0.06, 0.14];
 export const AMBIENT_BIRD_FORWARD_OFFSET = Math.PI;
 
 export const AMBIENT_BOAT_MODEL_URL = 'newBoats.glb';
-export const AMBIENT_BOAT_COUNT = 24;
+export const AMBIENT_BOAT_COUNT = 12;
 export const AMBIENT_BOAT_LENGTH_RANGE = [18, 38];
-export const AMBIENT_BOAT_SPEED_RANGE = [3.6, 8.4];
-export const AMBIENT_BOAT_LANE_RADIUS_RANGE = [170, 520];
+export const AMBIENT_BOAT_SPEED_RANGE = [2.8, 5.8];
+export const AMBIENT_BOAT_LANE_RADIUS_RANGE = [320, 760];
 export const AMBIENT_BOAT_EDGE_PADDING = 80;
-export const AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS = 125;
+export const AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS = 180;
 export const AMBIENT_BOAT_WATER_OFFSET = 0.18;
 export const AMBIENT_BOAT_FORWARD_OFFSET = -Math.PI / 2;
 
@@ -191,7 +196,7 @@ export const WATER_SETTINGS = {
     segments: 520,
     normalIntensity: 0.45,
     foamIntensity: 0.74,
-    reflectionStrength: 0.46,
+    reflectionStrength: 0.68,
   },
 };
 
