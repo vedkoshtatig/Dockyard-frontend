@@ -14,6 +14,29 @@ export const WATER_SHIMMER_SPEED = 0.55;
 export const WATER_QUALITY = 'HIGH';
 export const SKYBOX_TEXTURE_SCROLL_SPEED = 0.002;
 
+export const AMBIENT_BIRD_MODEL_URL = 'birds.glb';
+export const AMBIENT_BIRD_FLOCK_COUNT = 11;
+export const AMBIENT_BIRD_SINGLE_COUNT = 12;
+export const AMBIENT_BIRD_FLOCK_SIZE_RANGE = [3, 4];
+export const AMBIENT_BIRD_FLOCK_SPREAD = 12;
+export const AMBIENT_BIRD_AREA_RADIUS = 430;
+export const AMBIENT_BIRD_MIN_RADIUS = 55;
+export const AMBIENT_BIRD_HEIGHT_RANGE = [30, 90];
+export const AMBIENT_BIRD_SIZE_RANGE = [2.1, 4.2];
+export const AMBIENT_BIRD_ORBIT_SPEED_RANGE = [0.035, 0.085];
+export const AMBIENT_BIRD_FORWARD_OFFSET = 0;
+
+export const AMBIENT_BOAT_MODEL_URL = 'Low_Poly_Boats_Pack_01.glb';
+export const AMBIENT_BOAT_COUNT = 11;
+export const AMBIENT_BOAT_LENGTH_RANGE = [12, 28];
+export const AMBIENT_BOAT_SPEED_RANGE = [3.6, 8.4];
+export const AMBIENT_BOAT_LANE_RADIUS_RANGE = [170, 520];
+export const AMBIENT_BOAT_LANE_FLATTENING_RANGE = [0.72, 1.16];
+export const AMBIENT_BOAT_EDGE_PADDING = 80;
+export const AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS = 125;
+export const AMBIENT_BOAT_WATER_OFFSET = 0.18;
+export const AMBIENT_BOAT_FORWARD_OFFSET = 0;
+
 export const SHIP_INTRO_START_AXIS = new THREE.Vector3(0, 0, -1);
 export const SHIP_INTRO_START_DISTANCE = 102;
 export const SHIP_WAKE_BASE_STRENGTH = 0.2;
@@ -73,6 +96,7 @@ export const STACK_BLOCK_DEFINITIONS = [
   { label: 'Falling block 5', url: 'fallingBlock5.glb' },
 ];
 export const STACK_BLOCK_SCALE = 1.725;
+export const STACK_BLOCK_MATERIAL_COLOR_INTENSITY = 2;
 export const STACK_RANDOM_X_RANGE = 2.8;
 export const STACK_RANDOM_MAX_X_RANGE = 5.2;
 export const STACK_RANDOM_MIN_X_OFFSET = 1.35;

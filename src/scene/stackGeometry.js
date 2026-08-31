@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  STACK_BLOCK_MATERIAL_COLOR_INTENSITY,
   STACK_BLOCK_SCALE,
   STACK_RANDOM_X_RANGE,
   STACK_RANDOM_Z_RANGE,
@@ -51,7 +52,57 @@ export function prepareFallingBlockObject(object) {
     child.castShadow = true;
     child.receiveShadow = true;
     child.frustumCulled = false;
+    child.material = createMatteFallingBlockMaterialSet(child.material);
   });
+}
+
+function createMatteFallingBlockMaterialSet(material) {
+  if (Array.isArray(material)) {
+    return material.map(createMatteFallingBlockMaterial);
+  }
+
+  return createMatteFallingBlockMaterial(material);
+}
+
+function createMatteFallingBlockMaterial(material) {
+  if (!material) {
+    return material;
+  }
+
+  if (material.userData?.matteFallingBlockMaterial) {
+    return material;
+  }
+
+  const color = material.color
+    ? material.color.clone()
+    : new THREE.Color(0xffffff);
+  color.multiplyScalar(STACK_BLOCK_MATERIAL_COLOR_INTENSITY);
+
+  const matteMaterial = new THREE.MeshLambertMaterial({
+    alphaMap: material.alphaMap ?? null,
+    aoMap: material.aoMap ?? null,
+    aoMapIntensity: Math.min(material.aoMapIntensity ?? 1, 0.75),
+    color,
+    emissive: material.emissive
+      ? material.emissive.clone().multiplyScalar(0.12)
+      : new THREE.Color(0x000000),
+    emissiveMap: material.emissiveMap ?? null,
+    emissiveIntensity: Math.min(material.emissiveIntensity ?? 0, 0.12),
+    map: material.map ?? null,
+    name: material.name,
+    opacity: material.opacity,
+    side: material.side,
+    transparent: material.transparent,
+    vertexColors: material.vertexColors,
+  });
+
+  matteMaterial.toneMapped = material.toneMapped;
+  matteMaterial.userData = {
+    ...material.userData,
+    matteFallingBlockMaterial: true,
+  };
+
+  return matteMaterial;
 }
 
 export function measureDockyardStackAnchor(root, scene) {

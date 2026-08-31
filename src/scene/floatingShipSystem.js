@@ -199,8 +199,8 @@ export function createFloatingShipSystem({
       : 0;
     const targetWakeStrength = THREE.MathUtils.clamp(
       SHIP_WAKE_BASE_STRENGTH
-        + planarSpeed * SHIP_WAKE_SPEED_RESPONSE
-        + introWakeProgress * SHIP_WAKE_INTRO_BOOST,
+      + planarSpeed * SHIP_WAKE_SPEED_RESPONSE
+      + introWakeProgress * SHIP_WAKE_INTRO_BOOST,
       SHIP_WAKE_BASE_STRENGTH,
       SHIP_WAKE_MAX_STRENGTH,
     );

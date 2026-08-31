@@ -339,6 +339,12 @@ export function setupWater(root, { scene, sunLight }) {
   water.rotation.x = -Math.PI / 2;
   water.position.set(dockCenter.x, waterLevel, dockCenter.z);
   water.renderOrder = -1;
+  water.userData.bounds = {
+    center: dockCenter.clone(),
+    halfSize: waterSize * 0.5,
+    size: waterSize,
+  };
+  water.userData.level = waterLevel;
   scene.add(water);
 
   return water;
