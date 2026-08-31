@@ -33,7 +33,7 @@ export function createHangingLoadSystem({
   const hangingLoadBounds = new THREE.Box3();
   const hangingLoadPivot = new THREE.Vector3();
 
-  function setup(root) {
+  function setup(root, magnetRoot = null) {
     const parts = [];
     const targetObject = findStackTargetObject(root);
 
@@ -78,6 +78,13 @@ export function createHangingLoadSystem({
       ? new THREE.Vector3()
       : pivot.worldToLocal(new THREE.Vector3(loadCenter.x, loadBounds.min.y, loadCenter.z));
     const carrierContainers = parts.filter(isHangingContainerPart);
+    const carrierBounds = new THREE.Box3();
+    for (const carrier of carrierContainers) {
+      carrierBounds.union(new THREE.Box3().setFromObject(carrier));
+    }
+    const magnet = magnetRoot
+      ? installCraneMagnet(pivot, magnetRoot, carrierBounds)
+      : null;
 
     hangingLoad = {
       basePosition: pivot.position.clone(),
@@ -91,13 +98,93 @@ export function createHangingLoadSystem({
       loadCenterOffset: loadBounds.isEmpty()
         ? new THREE.Vector3()
         : loadCenter.sub(pivotWorldPosition),
+      magnet,
       phase: Math.random() * Math.PI * 2,
       targetName: targetObject?.name ?? null,
     };
 
+    if (magnet) {
+      for (const part of parts) {
+        part.visible = false;
+      }
+      positionMagnetAboveBlock();
+    }
+
     setCarrierVisible(false);
     setAssemblyVisible(false);
     installDebugHelpers(parts, targetObject, pivot, mountLocalPosition);
+  }
+
+  function getCraneMagnetBounds(magnetRoot) {
+    const bounds = new THREE.Box3();
+    magnetRoot.updateWorldMatrix(true, true);
+    magnetRoot.traverse((object) => {
+      if (!object.isMesh || object.name.toLowerCase().includes('string')) return;
+      bounds.union(new THREE.Box3().setFromObject(object));
+    });
+    return bounds.isEmpty() ? new THREE.Box3().setFromObject(magnetRoot) : bounds;
+  }
+
+  function installCraneMagnet(pivot, magnetRoot, carrierBounds) {
+    magnetRoot.name = 'crane_magnet_carrier';
+    pivot.add(magnetRoot);
+    magnetRoot.position.set(0, 0, 0);
+    magnetRoot.traverse((object) => {
+      if (!object.isMesh) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        if (!material) continue;
+        material.envMapIntensity = 0.72;
+        material.roughness = Math.min(material.roughness ?? 0.62, 0.62);
+        material.needsUpdate = true;
+      }
+    });
+
+    const magnetSize = getCraneMagnetBounds(magnetRoot).getSize(new THREE.Vector3());
+    const carrierSize = carrierBounds.getSize(new THREE.Vector3());
+    const desiredDiameter = Math.max(carrierSize.x, carrierSize.z, getStackBlockHeight()) * 0.36;
+    const currentDiameter = Math.max(magnetSize.x, magnetSize.z, 0.001);
+    magnetRoot.scale.multiplyScalar(THREE.MathUtils.clamp(desiredDiameter / currentDiameter, 0.12, 3));
+    return magnetRoot;
+  }
+
+  function positionMagnetAboveBlock() {
+    const magnet = hangingLoad?.magnet;
+    if (!magnet) return;
+    const mountPosition = hangingLoad.mountLocalPosition;
+    magnet.position.set(0, 0, 0);
+    const bounds = getCraneMagnetBounds(magnet);
+    if (bounds.isEmpty()) return;
+    const center = bounds.getCenter(new THREE.Vector3());
+    const localBottom = hangingLoad.pivot.worldToLocal(new THREE.Vector3(center.x, bounds.min.y, center.z));
+    magnet.position.set(
+      mountPosition.x - localBottom.x,
+      mountPosition.y + Math.max(getStackBlockHeight(), 0.5) - localBottom.y,
+      mountPosition.z - localBottom.z,
+    );
+    magnet.updateWorldMatrix(true, true);
+  }
+
+  function alignMagnetToObject(object) {
+    const magnet = hangingLoad?.magnet;
+    if (!magnet || !object) return;
+
+    object.updateWorldMatrix(true, true);
+    magnet.updateWorldMatrix(true, true);
+    const objectBounds = new THREE.Box3().setFromObject(object);
+    const magnetBounds = getCraneMagnetBounds(magnet);
+    if (objectBounds.isEmpty() || magnetBounds.isEmpty()) return;
+
+    const objectCenter = objectBounds.getCenter(new THREE.Vector3());
+    const magnetCenter = magnetBounds.getCenter(new THREE.Vector3());
+    const targetWorldPoint = new THREE.Vector3(objectCenter.x, objectBounds.max.y, objectCenter.z);
+    const magnetBottomWorldPoint = new THREE.Vector3(magnetCenter.x, magnetBounds.min.y, magnetCenter.z);
+    const targetLocalPoint = hangingLoad.pivot.worldToLocal(targetWorldPoint);
+    const magnetBottomLocalPoint = hangingLoad.pivot.worldToLocal(magnetBottomWorldPoint);
+    magnet.position.add(targetLocalPoint.sub(magnetBottomLocalPoint));
+    magnet.updateWorldMatrix(true, true);
   }
 
   function installDebugHelpers(parts, targetObject, pivot, mountLocalPosition) {
@@ -554,6 +641,7 @@ export function createHangingLoadSystem({
     if (snapHangingLoadToBase) {
       hangingLoad.pivot.position.copy(hangingLoad.basePosition);
     }
+    positionMagnetAboveBlock();
 
     return true;
   }
@@ -595,6 +683,7 @@ export function createHangingLoadSystem({
   }
 
   return {
+    alignMagnetToObject,
     attachObject,
     getMountLocalPosition,
     getPivotPositionArray,

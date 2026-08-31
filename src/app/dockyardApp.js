@@ -1082,6 +1082,7 @@ export function startDockyardApp() {
     part.object.rotation.set(part.baseRotationX, part.baseRotationY, part.baseRotationZ);
     part.object.scale.copy(part.baseScale);
     part.object.updateMatrixWorld(true);
+    hangingLoadSystem.alignMagnetToObject(part.object);
     mountedStackPart = part;
     hangingLoadSystem.updateCarrierVisibility();
 
@@ -1544,7 +1545,14 @@ export function startDockyardApp() {
       water = setupWater(modelRoot, { scene, sunLight });
       truckFollowerSystem = createTruckFollowerSystem(modelRoot);
       floatingShipSystem.setup(modelRoot);
-      hangingLoadSystem.setup(modelRoot);
+      let craneMagnet = null;
+      try {
+        const magnetGltf = await modelLoader.loadAsync('Crane_Magnet.glb');
+        craneMagnet = magnetGltf.scene;
+      } catch (error) {
+        console.warn('Crane magnet failed to load; using the imported hanging assembly.', error);
+      }
+      hangingLoadSystem.setup(modelRoot, craneMagnet);
       stackAnchor = measureDockyardStackAnchor(modelRoot, scene);
       currentStackTopY = stackAnchor.topY;
       setGameStatus('Loading stack blocks');
