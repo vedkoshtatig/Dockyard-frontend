@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {
   AMBIENT_BIRD_AREA_RADIUS,
+  AMBIENT_BIRD_BIG_FLOCK_SIZE_RANGE,
   AMBIENT_BIRD_FLOCK_COUNT,
   AMBIENT_BIRD_FLOCK_SIZE_RANGE,
   AMBIENT_BIRD_FLOCK_SPREAD,
@@ -10,6 +11,7 @@ import {
   AMBIENT_BIRD_MIN_RADIUS,
   AMBIENT_BIRD_MODEL_URL,
   AMBIENT_BIRD_ORBIT_SPEED_RANGE,
+  AMBIENT_BIRD_SMALL_FLOCK_SIZE_RANGE,
   AMBIENT_BIRD_SINGLE_COUNT,
   AMBIENT_BIRD_SIZE_RANGE,
   AMBIENT_BOAT_COUNT,
@@ -42,6 +44,10 @@ const BOAT_DOCK_CLEARANCE_SCALE = 0.42;
 const BOAT_TURN_SPEED_RANGE = [0.42, 0.82];
 const BOAT_TEMPLATE_NAME_PATTERN = /boat|ship|vessel|yacht|sail[_\s-]?boat|jet[_\s-]?ski/i;
 const TEMPLATE_CONTAINER_NAME_PATTERN = /sketchfab|rootnode|pack|collection/i;
+const BIRD_ANIMATION_SPEED_RANGE = [1.35, 2.15];
+const BIRD_DOCK_CLEARANCE_SCALE = 0.78;
+const BIRD_BIG_FLOCK_INTERVAL = 3;
+const BIRD_SMALL_FLOCK_INTERVAL = 2;
 const DARK_AMBIENT_BOAT_MATERIAL_NAMES = new Set([
   'Low_Poly_Boat_02SG',
   'Low_Poly_Boat_05SG',
@@ -233,7 +239,13 @@ function prepareAmbientObject(object, options = {}) {
 function cloneObjectWithWorldTransform(object, cloneFn = (source) => source.clone(true)) {
   object.updateWorldMatrix(true, true);
   const clone = cloneFn(object);
+
+  clone.position.set(0, 0, 0);
+  clone.quaternion.identity();
+  clone.scale.set(1, 1, 1);
+  clone.updateMatrix();
   clone.applyMatrix4(object.matrixWorld);
+
   return clone;
 }
 
@@ -406,6 +418,32 @@ export function createAmbientLifeSystem({
     return Math.max(tempSize.x, tempSize.z) * 0.5 + AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS;
   }
 
+  function getBirdMinimumOrbitRadius() {
+    return Math.max(
+      AMBIENT_BIRD_MIN_RADIUS,
+      getModelClearanceRadius() * BIRD_DOCK_CLEARANCE_SCALE,
+    );
+  }
+
+  function getBirdOrbitRadius() {
+    const minRadius = getBirdMinimumOrbitRadius();
+    const maxRadius = Math.max(minRadius + 80, AMBIENT_BIRD_AREA_RADIUS);
+
+    return THREE.MathUtils.randFloat(minRadius, maxRadius);
+  }
+
+  function getBirdFlockSize(index) {
+    if (index % BIRD_BIG_FLOCK_INTERVAL === 0) {
+      return randomIntegerRange(AMBIENT_BIRD_BIG_FLOCK_SIZE_RANGE);
+    }
+
+    if (index % BIRD_SMALL_FLOCK_INTERVAL === 0) {
+      return randomIntegerRange(AMBIENT_BIRD_SMALL_FLOCK_SIZE_RANGE);
+    }
+
+    return randomIntegerRange(AMBIENT_BIRD_FLOCK_SIZE_RANGE);
+  }
+
   function getBoatRouteBounds(waterInfo = getWaterInfo()) {
     const modelCenter = getModelCenter();
     const waterRadius = Math.max(AMBIENT_BOAT_LANE_RADIUS_RANGE[1], waterInfo.halfSize - AMBIENT_BOAT_EDGE_PADDING);
@@ -521,7 +559,7 @@ export function createAmbientLifeSystem({
       if (!filteredClip) continue;
 
       const action = mixer.clipAction(filteredClip);
-      action.timeScale = THREE.MathUtils.randFloat(0.86, 1.22);
+      action.timeScale = randomRange(BIRD_ANIMATION_SPEED_RANGE);
       action.play();
       action.time = Math.random() * filteredClip.duration;
       hasAction = true;
@@ -565,13 +603,7 @@ export function createAmbientLifeSystem({
         THREE.MathUtils.randFloatSpread(spread * 0.28),
         THREE.MathUtils.randFloatSpread(spread * 0.72),
       );
-      bird.rotation.set(
-        bird.rotation.x + THREE.MathUtils.randFloatSpread(0.12),
-        bird.rotation.y + THREE.MathUtils.randFloatSpread(0.28),
-        bird.rotation.z + THREE.MathUtils.randFloatSpread(0.12),
-      );
       bird.userData.basePosition = bird.position.clone();
-      bird.userData.baseRotation = bird.rotation.clone();
       bird.userData.flightPhase = Math.random() * Math.PI * 2;
       bird.userData.flightSpeed = THREE.MathUtils.randFloat(1.2, 2.2);
       birdEntries.push(bird);
@@ -580,9 +612,10 @@ export function createAmbientLifeSystem({
 
     const waterInfo = getWaterInfo();
     const orbitCenter = getModelCenter();
-    const orbitRadius = THREE.MathUtils.randFloat(AMBIENT_BIRD_MIN_RADIUS, AMBIENT_BIRD_AREA_RADIUS);
-    const radiusX = orbitRadius * THREE.MathUtils.randFloat(0.76, 1.16);
-    const radiusZ = orbitRadius * THREE.MathUtils.randFloat(0.72, 1.12);
+    const minOrbitRadius = getBirdMinimumOrbitRadius();
+    const orbitRadius = getBirdOrbitRadius();
+    const radiusX = Math.max(minOrbitRadius, orbitRadius * THREE.MathUtils.randFloat(0.76, 1.16));
+    const radiusZ = Math.max(minOrbitRadius, orbitRadius * THREE.MathUtils.randFloat(0.72, 1.12));
     const angle = Math.random() * Math.PI * 2;
     const direction = Math.random() < 0.5 ? -1 : 1;
     const flight = {
@@ -620,7 +653,7 @@ export function createAmbientLifeSystem({
       createBirdFlock(
         randomFromArray(templates),
         gltf.animations ?? [],
-        randomIntegerRange(AMBIENT_BIRD_FLOCK_SIZE_RANGE),
+        getBirdFlockSize(index),
         flockIndex,
       );
       flockIndex += 1;
@@ -785,14 +818,11 @@ export function createAmbientLifeSystem({
 
     for (const bird of flock.birds) {
       const basePosition = bird.userData.basePosition;
-      const baseRotation = bird.userData.baseRotation;
-      if (!basePosition || !baseRotation) continue;
+      if (!basePosition) continue;
 
       const phase = bird.userData.flightPhase;
       const speed = bird.userData.flightSpeed;
       bird.position.y = basePosition.y + Math.sin(elapsedSeconds * speed + phase) * 0.28;
-      bird.rotation.x = baseRotation.x + Math.sin(elapsedSeconds * speed * 0.7 + phase) * 0.025;
-      bird.rotation.z = baseRotation.z + Math.sin(elapsedSeconds * speed + phase) * 0.045;
     }
   }
 
@@ -854,6 +884,42 @@ export function createAmbientLifeSystem({
     };
   }
 
+  function getBirdDistanceStats() {
+    const center = getModelCenter();
+    const distances = flocks.map((flock) => Math.hypot(
+      flock.group.position.x - center.x,
+      flock.group.position.z - center.z,
+    ));
+
+    if (!distances.length) {
+      return null;
+    }
+
+    const total = distances.reduce((sum, distance) => sum + distance, 0);
+
+    return {
+      average: total / distances.length,
+      max: Math.max(...distances),
+      min: Math.min(...distances),
+    };
+  }
+
+  function getBirdHeightStats() {
+    const heights = flocks.map((flock) => flock.group.position.y);
+
+    if (!heights.length) {
+      return null;
+    }
+
+    const total = heights.reduce((sum, height) => sum + height, 0);
+
+    return {
+      average: total / heights.length,
+      max: Math.max(...heights),
+      min: Math.min(...heights),
+    };
+  }
+
   function getBoatHeadingAlignmentStats() {
     const alignments = boats.map((boat) => {
       const noseDirection = new THREE.Vector2(
@@ -885,7 +951,10 @@ export function createAmbientLifeSystem({
       ...(window.__dockyardDebug ?? {}),
       getAmbientLifeSnapshot: () => ({
         birdCount: flocks.reduce((count, flock) => count + flock.birds.length, 0),
+        birdDistanceStats: getBirdDistanceStats(),
         birdFlockCount: flocks.length,
+        birdFlockSizes: flocks.map((flock) => flock.birds.length),
+        birdHeightStats: getBirdHeightStats(),
         boatCount: boats.length,
         boatDistanceStats: getBoatDistanceStats(),
         boatHeadingAlignmentStats: getBoatHeadingAlignmentStats(),
