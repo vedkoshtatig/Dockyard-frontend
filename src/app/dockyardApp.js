@@ -1082,7 +1082,7 @@ export function startDockyardApp() {
     part.object.rotation.set(part.baseRotationX, part.baseRotationY, part.baseRotationZ);
     part.object.scale.copy(part.baseScale);
     part.object.updateMatrixWorld(true);
-    hangingLoadSystem.alignMagnetToObject(part.object);
+    hangingLoadSystem.alignObjectToMagnetOrigin(part.object);
     mountedStackPart = part;
     hangingLoadSystem.updateCarrierVisibility();
 

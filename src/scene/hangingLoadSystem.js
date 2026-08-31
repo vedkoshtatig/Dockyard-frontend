@@ -119,10 +119,16 @@ export function createHangingLoadSystem({
     const bounds = new THREE.Box3();
     magnetRoot.updateWorldMatrix(true, true);
     magnetRoot.traverse((object) => {
-      if (!object.isMesh || object.name.toLowerCase().includes('string')) return;
+      if (!object.isMesh) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      const isMagnetSurface = materials.some((material) => {
+        const materialName = material?.name?.toLowerCase() ?? '';
+        return materialName.includes('crane_magnet') || materialName.includes('magnet_shader');
+      });
+      if (!isMagnetSurface) return;
       bounds.union(new THREE.Box3().setFromObject(object));
     });
-    return bounds.isEmpty() ? new THREE.Box3().setFromObject(magnetRoot) : bounds;
+    return bounds;
   }
 
   function installCraneMagnet(pivot, magnetRoot, carrierBounds) {
@@ -154,20 +160,15 @@ export function createHangingLoadSystem({
     const magnet = hangingLoad?.magnet;
     if (!magnet) return;
     const mountPosition = hangingLoad.mountLocalPosition;
-    magnet.position.set(0, 0, 0);
-    const bounds = getCraneMagnetBounds(magnet);
-    if (bounds.isEmpty()) return;
-    const center = bounds.getCenter(new THREE.Vector3());
-    const localBottom = hangingLoad.pivot.worldToLocal(new THREE.Vector3(center.x, bounds.min.y, center.z));
     magnet.position.set(
-      mountPosition.x - localBottom.x,
-      mountPosition.y + Math.max(getStackBlockHeight(), 0.5) - localBottom.y,
-      mountPosition.z - localBottom.z,
+      mountPosition.x,
+      mountPosition.y + Math.max(getStackBlockHeight(), 0.5),
+      mountPosition.z,
     );
     magnet.updateWorldMatrix(true, true);
   }
 
-  function alignMagnetToObject(object) {
+  function alignObjectToMagnetOrigin(object) {
     const magnet = hangingLoad?.magnet;
     if (!magnet || !object) return;
 
@@ -179,12 +180,20 @@ export function createHangingLoadSystem({
 
     const objectCenter = objectBounds.getCenter(new THREE.Vector3());
     const magnetCenter = magnetBounds.getCenter(new THREE.Vector3());
-    const targetWorldPoint = new THREE.Vector3(objectCenter.x, objectBounds.max.y, objectCenter.z);
-    const magnetBottomWorldPoint = new THREE.Vector3(magnetCenter.x, magnetBounds.min.y, magnetCenter.z);
-    const targetLocalPoint = hangingLoad.pivot.worldToLocal(targetWorldPoint);
-    const magnetBottomLocalPoint = hangingLoad.pivot.worldToLocal(magnetBottomWorldPoint);
-    magnet.position.add(targetLocalPoint.sub(magnetBottomLocalPoint));
-    magnet.updateWorldMatrix(true, true);
+    const objectTopLocalPoint = hangingLoad.pivot.worldToLocal(
+      new THREE.Vector3(objectCenter.x, objectBounds.max.y, objectCenter.z),
+    );
+    // The corrected GLB origin anchors the crane assembly, while the visible
+    // contact plate sits below it. Attach the roof to that physical surface.
+    const magnetContactLocalPoint = hangingLoad.pivot.worldToLocal(
+      new THREE.Vector3(magnetCenter.x, magnetBounds.min.y, magnetCenter.z),
+    );
+    object.position.add(magnetContactLocalPoint.sub(objectTopLocalPoint));
+    const objectHeight = objectBounds.getSize(new THREE.Vector3()).y;
+    // Keep the hanging container visibly locked into the contact plate even
+    // while the crane swings and perspective exposes the roof edge.
+    object.position.y += THREE.MathUtils.clamp(objectHeight * 0.1, 0.32, 0.72);
+    object.updateWorldMatrix(true, true);
   }
 
   function installDebugHelpers(parts, targetObject, pivot, mountLocalPosition) {
@@ -683,7 +692,7 @@ export function createHangingLoadSystem({
   }
 
   return {
-    alignMagnetToObject,
+    alignObjectToMagnetOrigin,
     attachObject,
     getMountLocalPosition,
     getPivotPositionArray,
