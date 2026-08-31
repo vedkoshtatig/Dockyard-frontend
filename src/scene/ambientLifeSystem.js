@@ -15,6 +15,7 @@ import {
   AMBIENT_BIRD_SINGLE_COUNT,
   AMBIENT_BIRD_SIZE_RANGE,
   AMBIENT_BOAT_COUNT,
+  AMBIENT_BOAT_DOCKYARD_COUNT,
   AMBIENT_BOAT_EDGE_PADDING,
   AMBIENT_BOAT_FORWARD_OFFSET,
   AMBIENT_BOAT_LANE_RADIUS_RANGE,
@@ -37,11 +38,12 @@ const tempPlanarDirection = new THREE.Vector2();
 const BOAT_MAIN_AREA_FOCUS_CHANCE = 0.82;
 const BOAT_OUTER_OCEAN_RADIUS_MULTIPLIER = 1.85;
 const BOAT_FOCUS_RADIUS_MULTIPLIER = 1.15;
+const BOAT_DOCKYARD_ROUTE_RADIUS_PADDING = 280;
 const BOAT_ROUTE_MIN_TURN = 0.28;
 const BOAT_ROUTE_MAX_TURN = 0.92;
 const BOAT_MIN_ROUTE_DISTANCE = 80;
-const BOAT_MIN_SEPARATION = 72;
-const BOAT_DOCK_CLEARANCE_SCALE = 1.08;
+const BOAT_MIN_SEPARATION = 34;
+const BOAT_DOCK_CLEARANCE_SCALE = 0.42;
 const BOAT_TURN_SPEED_RANGE = [0.42, 0.82];
 const BOAT_TEMPLATE_NAME_PATTERN = /boat|ship|vessel|yacht|sail[_\s-]?boat|jet[_\s-]?ski/i;
 const TEMPLATE_CONTAINER_NAME_PATTERN = /sketchfab|rootnode|pack|collection/i;
@@ -474,6 +476,45 @@ export function createAmbientLifeSystem({
     };
   }
 
+  function getDockyardBoatRouteBounds(waterInfo = getWaterInfo()) {
+    const routeBounds = getBoatRouteBounds(waterInfo);
+    const maxRadius = Math.min(
+      routeBounds.maxRadius,
+      Math.max(
+        routeBounds.minRadius + BOAT_DOCKYARD_ROUTE_RADIUS_PADDING,
+        routeBounds.focusRadius * 0.62,
+      ),
+    );
+
+    return {
+      center: routeBounds.center,
+      minRadius: routeBounds.minRadius,
+      focusRadius: Math.min(maxRadius, Math.max(routeBounds.minRadius + 120, maxRadius * 0.82)),
+      maxRadius,
+    };
+  }
+
+  function getBoatRouteBoundsForBoat(boat, waterInfo = getWaterInfo()) {
+    return boat?.staysNearDockyard
+      ? getDockyardBoatRouteBounds(waterInfo)
+      : getBoatRouteBounds(waterInfo);
+  }
+
+  function getDockyardBoatCount() {
+    return Math.min(AMBIENT_BOAT_DOCKYARD_COUNT, AMBIENT_BOAT_COUNT);
+  }
+
+  function getBoatSpawnAngle(index, staysNearDockyard) {
+    if (staysNearDockyard) {
+      const dockyardBoatCount = Math.max(getDockyardBoatCount(), 1);
+      return (index / dockyardBoatCount) * Math.PI * 2 + THREE.MathUtils.randFloatSpread(0.36);
+    }
+
+    const oceanBoatCount = Math.max(AMBIENT_BOAT_COUNT - getDockyardBoatCount(), 1);
+    const oceanIndex = Math.max(index - getDockyardBoatCount(), 0);
+    return (oceanIndex / oceanBoatCount) * Math.PI * 2 + THREE.MathUtils.randFloatSpread(0.64);
+  }
+
   function isBoatPointSeparated(point, minDistance, excludedBoat = null) {
     const minDistanceSquared = minDistance * minDistance;
 
@@ -515,7 +556,7 @@ export function createAmbientLifeSystem({
   }
 
   function chooseNextBoatTarget(boat) {
-    const routeBounds = getBoatRouteBounds();
+    const routeBounds = getBoatRouteBoundsForBoat(boat);
     const currentAngle = Math.atan2(
       boat.position.y - routeBounds.center.y,
       boat.position.x - routeBounds.center.x,
@@ -530,7 +571,7 @@ export function createAmbientLifeSystem({
         angleJitter: 0.28 + attempt * 0.1,
         excludedBoat: boat,
         minSeparation: BOAT_MIN_SEPARATION,
-        preferFocus: Math.random() < BOAT_MAIN_AREA_FOCUS_CHANCE,
+        preferFocus: boat.staysNearDockyard || Math.random() < BOAT_MAIN_AREA_FOCUS_CHANCE,
       });
 
       if (target.distanceTo(boat.position) >= BOAT_MIN_ROUTE_DISTANCE) break;
@@ -720,14 +761,16 @@ export function createAmbientLifeSystem({
 
   function createBoatVoyage(template, index) {
     const waterInfo = getWaterInfo();
-    const routeBounds = getBoatRouteBounds(waterInfo);
-    const initialAngle = (index / Math.max(AMBIENT_BOAT_COUNT, 1)) * Math.PI * 2
-      + THREE.MathUtils.randFloatSpread(0.52);
+    const staysNearDockyard = index < getDockyardBoatCount();
+    const routeBounds = staysNearDockyard
+      ? getDockyardBoatRouteBounds(waterInfo)
+      : getBoatRouteBounds(waterInfo);
+    const initialAngle = getBoatSpawnAngle(index, staysNearDockyard);
     const startPosition = sampleBoatOceanPoint(routeBounds, {
       angle: initialAngle,
       angleJitter: 0.42,
       minSeparation: BOAT_MIN_SEPARATION,
-      preferFocus: index % 5 !== 0,
+      preferFocus: staysNearDockyard || index % 5 !== 0,
     });
     const length = randomRange(AMBIENT_BOAT_LENGTH_RANGE);
     const speed = randomRange(AMBIENT_BOAT_SPEED_RANGE);
@@ -744,6 +787,7 @@ export function createAmbientLifeSystem({
       rollAmount: THREE.MathUtils.randFloat(0.018, 0.048),
       rollSpeed: THREE.MathUtils.randFloat(0.62, 1.05),
       speed,
+      staysNearDockyard,
       target: startPosition.clone(),
       turnSpeed: randomRange(BOAT_TURN_SPEED_RANGE),
       wakeDirection: new THREE.Vector2(0, 1),
@@ -761,6 +805,29 @@ export function createAmbientLifeSystem({
     updateBoat(boat, 0, 0);
     boatsRoot.add(boat.group);
     boats.push(boat);
+  }
+
+  function constrainDockyardBoatToRouteBounds(boat, routeBounds) {
+    if (!boat.staysNearDockyard) return;
+
+    tempPlanarDirection.copy(boat.position).sub(routeBounds.center);
+    const distance = tempPlanarDirection.length();
+    let constrained = false;
+
+    if (distance > routeBounds.maxRadius) {
+      tempPlanarDirection.multiplyScalar(routeBounds.maxRadius / distance);
+      constrained = true;
+    } else if (distance > 0.0001 && distance < routeBounds.minRadius) {
+      tempPlanarDirection.multiplyScalar(routeBounds.minRadius / distance);
+      constrained = true;
+    }
+
+    if (!constrained) return;
+
+    boat.position.copy(routeBounds.center).add(tempPlanarDirection);
+    chooseNextBoatTarget(boat);
+    boat.heading = planarHeadingToPoint(boat.position, boat.target);
+    moveDirectionFromHeading(boat.moveDirection, boat.heading);
   }
 
   function updateBoatWakeUniforms() {
@@ -846,6 +913,7 @@ export function createAmbientLifeSystem({
 
   function updateBoat(boat, elapsedSeconds, deltaSeconds) {
     const waterInfo = getWaterInfo();
+    const routeBounds = getBoatRouteBoundsForBoat(boat, waterInfo);
     tempPlanarDirection.copy(boat.target).sub(boat.position);
     let targetDistance = tempPlanarDirection.length();
 
@@ -863,6 +931,7 @@ export function createAmbientLifeSystem({
     moveDirectionFromHeading(boat.moveDirection, boat.heading);
     const moveDistance = Math.min(targetDistance, boat.speed * deltaSeconds);
     boat.position.addScaledVector(boat.moveDirection, moveDistance);
+    constrainDockyardBoatToRouteBounds(boat, routeBounds);
 
     const waterY = waterInfo.level + AMBIENT_BOAT_WATER_OFFSET;
     const heave = Math.sin(elapsedSeconds * boat.heaveSpeed + boat.phase) * boat.heaveAmount;
@@ -899,6 +968,29 @@ export function createAmbientLifeSystem({
       average: total / distances.length,
       max: Math.max(...distances),
       min: Math.min(...distances),
+    };
+  }
+
+  function getDockyardBoatStats() {
+    const routeBounds = getDockyardBoatRouteBounds();
+    const center = getModelCenter();
+    const distances = boats.map((boat) => ({
+      distance: Math.hypot(
+        boat.group.position.x - center.x,
+        boat.group.position.z - center.z,
+      ),
+      staysNearDockyard: boat.staysNearDockyard,
+    }));
+    const nearbyCount = distances.filter((entry) => entry.distance <= routeBounds.maxRadius).length;
+    const managedNearbyCount = distances.filter((entry) =>
+      entry.staysNearDockyard && entry.distance <= routeBounds.maxRadius
+    ).length;
+
+    return {
+      managedNearbyCount,
+      maxRadius: routeBounds.maxRadius,
+      nearbyCount,
+      required: getDockyardBoatCount(),
     };
   }
 
@@ -975,6 +1067,7 @@ export function createAmbientLifeSystem({
         birdHeightStats: getBirdHeightStats(),
         boatCount: boats.length,
         boatDistanceStats: getBoatDistanceStats(),
+        dockyardBoatStats: getDockyardBoatStats(),
         boatHeadingAlignmentStats: getBoatHeadingAlignmentStats(),
         boatMeshCounts: boats.map((boat) => countRenderableMeshes(boat.group)),
         boatTemplateNames,

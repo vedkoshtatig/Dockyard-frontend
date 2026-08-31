@@ -602,7 +602,7 @@ export function startDockyardApp() {
         status: 'won',
         winningAmount: Number(response.winningAmount),
       };
-      resetStackPool();
+      resetStackPool({ clearSettledTransforms: true });
       mountNextStackPart();
       cameraSystem.requestBaseReturn();
       setGameStatus(`Cashed out ${formatAmount(response.winningAmount, response.currency)}`);
@@ -963,7 +963,7 @@ export function startDockyardApp() {
       });
     }
 
-    resetStackPool();
+    resetStackPool({ clearSettledTransforms: true });
     if (gameState.completedFloorCount > 0) {
       restoreCompletedStack(gameState.completedFloorCount);
     } else {
@@ -1089,7 +1089,6 @@ export function startDockyardApp() {
   }
 
   function restoreCompletedStack(completedBlockCount) {
-    resetStackPool();
     const visibleCount = THREE.MathUtils.clamp(
       completedBlockCount,
       0,
@@ -1097,25 +1096,14 @@ export function startDockyardApp() {
     );
     let restoredTopY = stackAnchor.topY;
 
+    resetStackPool({ clearSettledTransforms: visibleCount === 0 });
+
     for (let index = 0; index < visibleCount; index += 1) {
       const part = stackParts[index];
       const variation = getRestoredBlockVariation(index);
       attachPartToStack(part);
       part.object.visible = true;
-      part.object.rotation.set(
-        part.baseRotationX,
-        part.baseRotationY + variation.rotationY,
-        part.baseRotationZ,
-      );
-      part.object.scale.copy(part.baseScale);
-      placeObjectParentBottomCenter(
-        part.object,
-        stackAnchor.center.x + variation.x,
-        stackAnchor.center.z + variation.z,
-        restoredTopY - STACK_VERTICAL_OVERLAP,
-      );
-      const restoredBounds = getObjectParentSpaceBox(part.object);
-      restoredTopY = restoredBounds.max.y;
+      currentStackTopY = Math.max(currentStackTopY, applyCompletedPartTransform(part, index));
     }
 
     currentStackTopY = restoredTopY;
@@ -1125,39 +1113,14 @@ export function startDockyardApp() {
     updateControls();
   }
 
-  function getRestoredBlockVariation(index) {
-    const seed = `${gameState.betId ?? 'restored-round'}:${index}`;
-    const randomX = seededUnitInterval(`${seed}:x`) * 2 - 1;
-    const randomZ = seededUnitInterval(`${seed}:z`) * 2 - 1;
-    const randomRotation = seededUnitInterval(`${seed}:rotation`) * 2 - 1;
-    const progress = THREE.MathUtils.clamp(
-      index / Math.max(STACK_RANDOM_DEVIATION_RAMP_BLOCKS, 1),
-      0,
-      1,
-    );
-    const xRange = THREE.MathUtils.lerp(STACK_RANDOM_X_RANGE, STACK_RANDOM_MAX_X_RANGE, progress) * 0.62;
-
-    return {
-      rotationY: randomRotation * THREE.MathUtils.degToRad(STACK_RANDOM_Y_ROTATION_DEGREES) * 0.55,
-      x: randomX * xRange,
-      z: randomZ * STACK_RANDOM_Z_RANGE,
-    };
-  }
-
-  function seededUnitInterval(value) {
-    let hash = 2166136261;
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0) / 4294967295;
-  }
-
-  function resetStackPool() {
+  function resetStackPool({ clearSettledTransforms = false } = {}) {
     mountedStackPart = null;
 
     for (const part of stackParts) {
       attachPartToStack(part);
+      if (clearSettledTransforms) {
+        part.settledTransform = null;
+      }
 
       part.object.visible = false;
       part.object.rotation.set(part.baseRotationX, part.baseRotationY, part.baseRotationZ);
@@ -1175,6 +1138,47 @@ export function startDockyardApp() {
     effectsSystem.clearLandingImpact();
     effectsSystem.clearDustParticles();
     effectsSystem.clearSplashEffects();
+  }
+
+  function storeSettledPartTransform(part) {
+    const box = getObjectParentSpaceBox(part.object);
+
+    part.settledTransform = {
+      position: part.object.position.clone(),
+      rotation: part.object.rotation.clone(),
+      scale: part.object.scale.clone(),
+      topY: box.isEmpty() ? part.topY : box.max.y,
+    };
+  }
+
+  function createRestoredSettledPartTransform(part, index) {
+    const xRange = getLandingXRange(index);
+    const finalX = part.baseX + getNonAlignedLandingXOffset(xRange, part.baseX, index);
+
+    part.object.position.set(finalX, part.finalY, part.baseZ);
+    part.object.rotation.set(part.baseRotationX, part.baseRotationY + getNonAlignedYRotation(), part.baseRotationZ);
+    part.object.scale.copy(part.baseScale);
+    part.object.updateMatrixWorld(true);
+    storeSettledPartTransform(part);
+    return part.settledTransform;
+  }
+
+  function applyCompletedPartTransform(part, index) {
+    if (!part.settledTransform) {
+      createRestoredSettledPartTransform(part, index);
+    }
+
+    const transform = part.settledTransform;
+
+    if (transform) {
+      part.object.position.copy(transform.position);
+      part.object.rotation.copy(transform.rotation);
+      part.object.scale.copy(transform.scale);
+      part.object.updateMatrixWorld(true);
+      return transform.topY;
+    }
+
+    return part.topY;
   }
 
   function mountNextStackPart({ snapHangingLoadToBase = true } = {}) {
@@ -1286,9 +1290,9 @@ export function startDockyardApp() {
     });
   }
 
-  function getLandingXRange() {
+  function getLandingXRange(partIndex = stackIndex) {
     const progress = THREE.MathUtils.clamp(
-      stackIndex / Math.max(STACK_RANDOM_DEVIATION_RAMP_BLOCKS, 1),
+      partIndex / Math.max(STACK_RANDOM_DEVIATION_RAMP_BLOCKS, 1),
       0,
       1,
     );
@@ -1316,9 +1320,10 @@ export function startDockyardApp() {
     return direction * range * edgeAmount;
   }
 
-  function getNonAlignedLandingXOffset(range, baseX) {
+  function getNonAlignedLandingXOffset(range, baseX, partIndex = stackIndex) {
     const minOffset = Math.min(STACK_RANDOM_MIN_X_OFFSET, range * 0.75);
-    const previousX = stackParts[stackIndex - 1]?.object.position.x;
+    const previousPart = stackParts[partIndex - 1];
+    const previousX = previousPart?.settledTransform?.position?.x ?? previousPart?.object.position.x;
     const minPreviousDelta = Math.min(STACK_RANDOM_MIN_PREVIOUS_X_DELTA, range * 0.65);
     let bestOffset = randomThrillingXOffset(range);
     let bestScore = getLandingAlignmentScore(bestOffset, baseX, previousX, minOffset, minPreviousDelta);
@@ -1433,6 +1438,7 @@ export function startDockyardApp() {
       drop.part.object.rotation.set(drop.baseRotationX, drop.finalRotationY, drop.baseRotationZ);
       drop.part.object.scale.copy(drop.baseScale);
       drop.part.object.updateMatrixWorld(true);
+      storeSettledPartTransform(drop.part);
 
       void hangingLoadSystem.settleAfterDrop(
         stackIndex < stackParts.length && stackIndex < gameState.maxFloor,
@@ -1525,11 +1531,10 @@ export function startDockyardApp() {
 
     if (visibleBlocks === 0) {
       collapsingBlocks.length = 0;
-      collapseRecoveryPending = true;
-      resetStackPool();
-      hangingLoadSystem.hideAssembly();
       cameraSystem.requestBaseReturn();
-      setGameStatus('Returning to dockyard');
+      resetStackPool({ clearSettledTransforms: true });
+      mountNextStackPart();
+      setGameStatus('Tower collapsed');
       if (stackButton) {
         stackButton.disabled = true;
         stackButton.textContent = 'Resetting';

@@ -17,7 +17,7 @@ export const SHIP_WAKE_PADDING = 10;
 export const WATER_ANIMATION_SPEED = 1.65;
 export const WATER_SHIMMER_SPEED = 0.55;
 export const WATER_QUALITY = 'HIGH';
-export const WATER_BOAT_WAKE_MAX_COUNT = 24;
+export const WATER_BOAT_WAKE_MAX_COUNT = 32;
 export const SKYBOX_TEXTURE_SCROLL_SPEED = 0.002;
 
 export const AMBIENT_BIRD_MODEL_URL = 'birds.glb';
@@ -35,7 +35,8 @@ export const AMBIENT_BIRD_ORBIT_SPEED_RANGE = [0.06, 0.14];
 export const AMBIENT_BIRD_FORWARD_OFFSET = Math.PI;
 
 export const AMBIENT_BOAT_MODEL_URL = 'newBoats.glb';
-export const AMBIENT_BOAT_COUNT = 12;
+export const AMBIENT_BOAT_COUNT = 32;
+export const AMBIENT_BOAT_DOCKYARD_COUNT = 16;
 export const AMBIENT_BOAT_LENGTH_RANGE = [18, 38];
 export const AMBIENT_BOAT_SPEED_RANGE = [2.8, 5.8];
 export const AMBIENT_BOAT_LANE_RADIUS_RANGE = [320, 760];
