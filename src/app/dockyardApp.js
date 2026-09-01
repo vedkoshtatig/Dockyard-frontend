@@ -606,7 +606,8 @@ export function startDockyardApp() {
         winningAmount: Number(response.winningAmount),
       };
       resetStackPool({ clearSettledTransforms: true });
-      mountNextStackPart();
+      collapseRecoveryPending = true;
+      hangingLoadSystem.hideAssembly();
       cameraSystem.requestBaseReturn();
       setGameStatus(`Cashed out ${formatAmount(response.winningAmount, response.currency)}`);
       await confirmResolvedRound();
@@ -1461,9 +1462,10 @@ export function startDockyardApp() {
 
     if (visibleBlocks === 0) {
       collapsingBlocks.length = 0;
-      cameraSystem.requestBaseReturn();
       resetStackPool({ clearSettledTransforms: true });
-      mountNextStackPart();
+      collapseRecoveryPending = true;
+      hangingLoadSystem.hideAssembly();
+      cameraSystem.requestBaseReturn();
       setGameStatus('Tower collapsed');
       if (stackButton) {
         stackButton.disabled = true;

@@ -10,6 +10,7 @@ import {
   HANGING_LOAD_VISIBLE_TOP_PROJECTED_Y_PADDING,
   HANGING_LOAD_RETRACT_SECONDS,
   HANGING_LOAD_SETTLE_TIMEOUT_PADDING_SECONDS,
+  HANGING_STRING_LENGTH_MULTIPLIER,
   INTRO_HANGING_LOAD_DESCEND_SECONDS,
   STACK_DROP_HEIGHT,
 } from '../core/constants.js';
@@ -69,6 +70,8 @@ export function createHangingLoadSystem({
       pivot.attach(part);
     }
 
+    pivot.updateWorldMatrix(true, true);
+    extendHangingStrings(parts, pivot);
     pivot.updateWorldMatrix(true, true);
     const pivotWorldPosition = new THREE.Vector3();
     const loadCenter = new THREE.Vector3();
@@ -156,6 +159,24 @@ export function createHangingLoadSystem({
       }
     });
     return bounds;
+  }
+
+  function extendHangingStrings(parts, pivot) {
+    for (const part of parts) {
+      if (!/hanging[_\s.-]*string/i.test(part.name)) continue;
+
+      const originalBounds = getGeometryBoundsInSpace(part, pivot);
+      if (originalBounds.isEmpty()) continue;
+
+      part.scale.y *= HANGING_STRING_LENGTH_MULTIPLIER;
+      part.updateWorldMatrix(true, true);
+      const extendedBounds = getGeometryBoundsInSpace(part, pivot);
+      if (extendedBounds.isEmpty()) continue;
+
+      // Keep the lower connection fixed while extending the cable upward.
+      part.position.y += originalBounds.min.y - extendedBounds.min.y;
+      part.updateWorldMatrix(true, true);
+    }
   }
 
   function isMagnetSurfaceMesh(mesh) {
