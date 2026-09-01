@@ -58,6 +58,11 @@ import { createDockyardAudioSystem } from '../services/dockyardAudio.js';
 import { getUiElements } from '../ui/elements.js';
 import { formatAmount, formatPanelAmount, hasAtMostTwoDecimalPlaces } from '../ui/format.js';
 
+// Change this value to control how long each intro image stays on screen.
+const INTRO_SLIDE_DURATION_MS = 1500;
+const INTRO_OVERLAY_EXIT_MS = 520;
+const CASINO_SESSION_STORAGE_KEY = 'dockyard-stack.casino-session-id.v1';
+
 export function startDockyardApp() {
 
   const {
@@ -69,6 +74,9 @@ export function startDockyardApp() {
     clientSeedElement,
     dataModeElement,
     difficultyElement,
+    difficultyMenu,
+    difficultyOptionElements,
+    difficultyTrigger,
     fpsElement,
     fullscreenButton,
     howToPlayCloseButton,
@@ -76,12 +84,24 @@ export function startDockyardApp() {
     howToPlayDifficultyGuide,
     howToPlayLimits,
     howToPlayOpenButton,
+    introNextButton,
+    introOverlayElement,
+    introPreviousButton,
+    introProgressBar,
+    introProgressElement,
+    introSlideElements,
+    introStartButton,
     loaderEl,
     resetButton,
     resetRoundButton,
     roundDetailsElement,
     stackButton,
     statusElement,
+    winAmountElement,
+    winBlocksElement,
+    winDialog,
+    winDialogCloseButton,
+    winMultiplierElement,
   } = getUiElements();
 
   const {
@@ -93,12 +113,15 @@ export function startDockyardApp() {
   } = createThreeScene({ canvas, cameraHeightElement });
 
   const loadingManager = new THREE.LoadingManager();
-  loadingManager.onStart = (url) => {
+  loadingManager.onStart = (url, loaded, total) => {
     setLoaderMessage(`Loading ${url.split('/').pop()}`);
+    updateIntroAssetProgress(loaded, total);
   };
   loadingManager.onProgress = (url, loaded, total) => {
     setLoaderMessage(`Loading assets ${loaded}/${total}`);
+    updateIntroAssetProgress(loaded, total);
   };
+  loadingManager.onLoad = () => updateIntroAssetProgress(1, 1);
   loadingManager.onError = (url) => {
     setLoaderMessage(`Failed to load ${url}`, true);
   };
@@ -124,6 +147,16 @@ export function startDockyardApp() {
   let resetInProgress = false;
   let collapseSettled = null;
   let collapseRecoveryPending = false;
+  let introAnimationStarted = false;
+  let introSceneReady = false;
+  let introSceneLoadFailed = false;
+  let introSlideIndex = 0;
+  let introSlideTimer = null;
+  let introSlideTimerVersion = 0;
+  let introImageAssetsLoaded = 0;
+  let introImageAssetTotal = 0;
+  let loadingManagerAssetsLoaded = 0;
+  let loadingManagerAssetsTotal = 0;
   let settings = null;
   const gameClient = createMegaBlockClient();
   let disconnectBalanceSocket = null;
@@ -191,6 +224,183 @@ export function startDockyardApp() {
     loaderEl.setAttribute('aria-hidden', 'true');
   }
 
+  function clearIntroSlideTimer() {
+    introSlideTimerVersion += 1;
+
+    if (introSlideTimer === null) return;
+
+    window.clearTimeout(introSlideTimer);
+    introSlideTimer = null;
+  }
+
+  function initializeIntroSlideshow() {
+    if (!introOverlayElement || !introSlideElements?.length) {
+      return;
+    }
+
+    introImageAssetTotal = introSlideElements.length;
+    introSlideElements.forEach((slide) => {
+      const markImageLoaded = () => {
+        if (slide.dataset.introAssetLoaded) return;
+        slide.dataset.introAssetLoaded = 'true';
+        introImageAssetsLoaded += 1;
+        updateIntroAssetProgress();
+      };
+
+      if (slide.complete) {
+        markImageLoaded();
+      } else {
+        slide.addEventListener('load', markImageLoaded, { once: true });
+        slide.addEventListener('error', markImageLoaded, { once: true });
+      }
+    });
+
+    updateIntroAssetProgress();
+    showIntroSlide(0);
+  }
+
+  function showIntroSlide(index) {
+    const slides = Array.from(introSlideElements ?? []);
+
+    if (!slides.length) {
+      return;
+    }
+
+    introSlideIndex = THREE.MathUtils.clamp(index, 0, slides.length - 1);
+
+    slides.forEach((slide, slideIndex) => {
+      const isActive = slideIndex === introSlideIndex;
+      slide.classList.toggle('is-active', isActive);
+      slide.setAttribute('aria-hidden', String(!isActive));
+    });
+
+    const isFinalSlide = introSlideIndex === slides.length - 1;
+    updateIntroStartButton();
+    updateIntroNavigation();
+
+    clearIntroSlideTimer();
+    if (!isFinalSlide) {
+      const timerVersion = introSlideTimerVersion;
+      introSlideTimer = window.setTimeout(() => {
+        if (timerVersion !== introSlideTimerVersion) return;
+        showIntroSlide(introSlideIndex + 1);
+      }, INTRO_SLIDE_DURATION_MS);
+    }
+  }
+
+  function updateIntroAssetProgress(loaded = loadingManagerAssetsLoaded, total = loadingManagerAssetsTotal) {
+    loadingManagerAssetsLoaded = loaded;
+    loadingManagerAssetsTotal = total;
+
+    const assetTotal = introImageAssetTotal + loadingManagerAssetsTotal;
+    const assetLoaded = introImageAssetsLoaded + loadingManagerAssetsLoaded;
+    const progress = assetTotal ? Math.min(100, Math.round((assetLoaded / assetTotal) * 100)) : 0;
+
+    if (introProgressBar) {
+      introProgressBar.style.width = `${progress}%`;
+    }
+    introProgressElement?.setAttribute('aria-valuenow', String(progress));
+  }
+
+  function updateIntroNavigation() {
+    const finalSlideIndex = (introSlideElements?.length ?? 1) - 1;
+    const isLeaving = introOverlayElement?.classList.contains('intro-slideshow--leaving');
+
+    if (introPreviousButton) {
+      introPreviousButton.disabled = isLeaving || introSlideIndex === 0;
+    }
+    if (introNextButton) {
+      introNextButton.disabled = isLeaving || introSlideIndex === finalSlideIndex;
+    }
+  }
+
+  function handleIntroPreviousClick() {
+    showIntroSlide(introSlideIndex - 1);
+  }
+
+  function handleIntroNextClick() {
+    showIntroSlide(introSlideIndex + 1);
+  }
+
+  function updateIntroStartButton() {
+    if (!introStartButton) {
+      return;
+    }
+
+    if (introSceneLoadFailed) {
+      introStartButton.disabled = true;
+      introStartButton.textContent = 'Load Failed';
+      return;
+    }
+
+    if (!introSceneReady) {
+      introStartButton.disabled = true;
+      introStartButton.textContent = 'Loading';
+      return;
+    }
+
+    introStartButton.disabled = false;
+    introStartButton.textContent = 'Start';
+  }
+
+  function markIntroSceneReady() {
+    introSceneReady = true;
+    updateIntroStartButton();
+
+    if (!introOverlayElement || !introSlideElements?.length) {
+      startIntroAnimationOnce();
+    }
+  }
+
+  function markIntroSceneLoadFailed() {
+    introSceneLoadFailed = true;
+    updateIntroStartButton();
+  }
+
+  function handleIntroStartClick() {
+    if (!introSceneReady || introSceneLoadFailed) {
+      return;
+    }
+
+    void audioSystem.unlock();
+    beginIntroOverlayExit();
+  }
+
+  function beginIntroOverlayExit() {
+    if (introAnimationStarted) {
+      return;
+    }
+
+    clearIntroSlideTimer();
+
+    if (!introOverlayElement) {
+      startIntroAnimationOnce();
+      return;
+    }
+
+    if (introStartButton) {
+      introStartButton.disabled = true;
+      introStartButton.textContent = 'Starting';
+    }
+
+    introOverlayElement.classList.add('intro-slideshow--leaving');
+    updateIntroNavigation();
+
+    window.setTimeout(() => {
+      introOverlayElement.hidden = true;
+      startIntroAnimationOnce();
+    }, INTRO_OVERLAY_EXIT_MS);
+  }
+
+  function startIntroAnimationOnce() {
+    if (introAnimationStarted) {
+      return;
+    }
+
+    introAnimationStarted = true;
+    cameraSystem.startIntroAnimation();
+  }
+
   async function initializeGameSession() {
     setDataMode();
 
@@ -247,7 +457,7 @@ export function startDockyardApp() {
 
   function getLaunchRequest() {
     const params = new URLSearchParams(window.location.search);
-    const casinoSessionId = params.get('casinoSessionId');
+    const casinoSessionId = params.get('casinoSessionId') ?? getStoredCasinoSessionId();
     const gameKey = params.get('gameKey') ?? appEnv.gameKey;
     const isMockMode = getMegaBlockDataMode() === 'mock';
     const effectiveSessionId = casinoSessionId ?? appEnv.a1StubSessionId;
@@ -271,12 +481,33 @@ export function startDockyardApp() {
   function removeCasinoSessionFromUrl() {
     const url = new URL(window.location.href);
 
+    const casinoSessionId = url.searchParams.get('casinoSessionId');
+    if (casinoSessionId) {
+      storeCasinoSessionId(casinoSessionId);
+    }
+
     if (!url.searchParams.has('casinoSessionId')) {
       return;
     }
 
     url.searchParams.delete('casinoSessionId');
     window.history.replaceState(window.history.state, document.title, `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function getStoredCasinoSessionId() {
+    try {
+      return window.sessionStorage.getItem(CASINO_SESSION_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function storeCasinoSessionId(casinoSessionId) {
+    try {
+      window.sessionStorage.setItem(CASINO_SESSION_STORAGE_KEY, casinoSessionId);
+    } catch {
+      // The URL remains usable when browser storage is unavailable.
+    }
   }
 
   function setDataMode() {
@@ -556,6 +787,16 @@ export function startDockyardApp() {
       if (response.result === 'won' || response.result === 'lost') {
         await confirmResolvedRound();
       }
+      const completedEntireStack = response.result === 'won'
+        && response.completedFloorCount >= response.maxFloor;
+
+      if (completedEntireStack) {
+        // Begin the next cargo scene while the result board is on screen.
+        resetStackPool({ clearSettledTransforms: true });
+      }
+      if (response.result === 'won') {
+        showWinningPopup();
+      }
     } catch (error) {
       const hasUnfinishedBet = await syncUnfinishedBet({
         resetStackWhenNone: false,
@@ -611,6 +852,7 @@ export function startDockyardApp() {
       cameraSystem.requestBaseReturn();
       setGameStatus(`Cashed out ${formatAmount(response.winningAmount, response.currency)}`);
       await confirmResolvedRound();
+      showWinningPopup();
     } catch (error) {
       const hasUnfinishedBet = await syncUnfinishedBet({
         resetStackWhenNone: false,
@@ -780,6 +1022,15 @@ export function startDockyardApp() {
       difficultyElement.disabled = hasActiveBet || isBusy;
     }
 
+    if (difficultyTrigger) {
+      difficultyTrigger.disabled = hasActiveBet || isBusy;
+      syncDifficultyTrigger();
+
+      if (difficultyTrigger.disabled) {
+        setDifficultyMenuOpen(false);
+      }
+    }
+
     if (clientSeedElement) {
       clientSeedElement.disabled = hasActiveBet || isBusy;
     }
@@ -843,6 +1094,26 @@ export function startDockyardApp() {
     return 'easy';
   }
 
+  function syncDifficultyTrigger() {
+    const difficulty = getSelectedDifficulty();
+    const label = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+
+    if (difficultyTrigger) {
+      difficultyTrigger.textContent = label;
+    }
+
+    difficultyOptionElements?.forEach((option) => {
+      option.setAttribute('aria-checked', String(option.dataset.difficultyOption === difficulty));
+    });
+  }
+
+  function setDifficultyMenuOpen(isOpen) {
+    if (!difficultyMenu || !difficultyTrigger) return;
+
+    difficultyMenu.hidden = !isOpen;
+    difficultyTrigger.setAttribute('aria-expanded', String(isOpen));
+  }
+
   function handleDifficultyChange() {
     if (!settings || gameState.betId) {
       return;
@@ -880,6 +1151,24 @@ export function startDockyardApp() {
     if (statusElement) {
       statusElement.textContent = status;
     }
+  }
+
+  function showWinningPopup() {
+    if (!winDialog || gameState.status !== 'won' || winDialog.open) {
+      return;
+    }
+
+    if (winAmountElement) {
+      winAmountElement.textContent = formatAmount(gameState.winningAmount, gameState.currency);
+    }
+    if (winMultiplierElement) {
+      winMultiplierElement.textContent = `${gameState.payoutMultiplier.toFixed(3)}x`;
+    }
+    if (winBlocksElement) {
+      winBlocksElement.textContent = `${gameState.completedFloorCount}/${gameState.maxFloor} blocks`;
+    }
+
+    winDialog.showModal();
   }
 
   function handleCameraBaseReturnComplete() {
@@ -1030,10 +1319,9 @@ export function startDockyardApp() {
 
     for (let index = 0; index < visibleCount; index += 1) {
       const part = stackParts[index];
-      const variation = getRestoredBlockVariation(index);
       attachPartToStack(part);
       part.object.visible = true;
-      currentStackTopY = Math.max(currentStackTopY, applyCompletedPartTransform(part, index));
+      restoredTopY = Math.max(restoredTopY, applyCompletedPartTransform(part, index));
     }
 
     currentStackTopY = restoredTopY;
@@ -1558,6 +1846,8 @@ export function startDockyardApp() {
     };
   }
 
+  initializeIntroSlideshow();
+
   function animate() {
     const deltaSeconds = clock.getDelta();
     const elapsedSeconds = clock.elapsedTime;
@@ -1633,12 +1923,12 @@ export function startDockyardApp() {
           ambientLifeSystem.load(modelLoader),
         ]);
         cameraSystem.frameBaseStackAtViewPosition();
-        cameraSystem.startIntroAnimation();
+        markIntroSceneReady();
         setGameStatus(gameState.betId ? 'Ready for next block' : 'Ready to place bet');
       } catch (error) {
         console.warn('Falling blocks failed to load.', error);
         setGameStatus('Dockyard loaded without stack blocks');
-        cameraSystem.startIntroAnimation();
+        markIntroSceneReady();
       }
 
       updateControls();
@@ -1652,6 +1942,7 @@ export function startDockyardApp() {
     (error) => {
       console.error(error);
       setLoaderMessage('Dockyard model failed to load', true);
+      markIntroSceneLoadFailed();
     }
   );
 
@@ -1662,7 +1953,34 @@ export function startDockyardApp() {
   cameraHeightElement?.addEventListener('input', cameraSystem.moveFromSlider);
   amountElement?.addEventListener('input', handleAmountInput);
   difficultyElement?.addEventListener('change', handleDifficultyChange);
+  difficultyTrigger?.addEventListener('click', () => {
+    if (difficultyTrigger.disabled) return;
+    setDifficultyMenuOpen(difficultyMenu?.hidden);
+  });
+  difficultyOptionElements?.forEach((option) => {
+    option.addEventListener('click', () => {
+      if (!difficultyElement || difficultyElement.disabled) return;
+      difficultyElement.value = option.dataset.difficultyOption;
+      difficultyElement.dispatchEvent(new Event('change', { bubbles: true }));
+      setDifficultyMenuOpen(false);
+      difficultyTrigger?.focus();
+    });
+  });
+  document.addEventListener('click', (event) => {
+    if (!difficultyMenu?.hidden && !event.target.closest('.panel-value--difficulty')) {
+      setDifficultyMenuOpen(false);
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !difficultyMenu?.hidden) {
+      setDifficultyMenuOpen(false);
+      difficultyTrigger?.focus();
+    }
+  });
   clientSeedElement?.addEventListener('input', updateControls);
+  introPreviousButton?.addEventListener('click', handleIntroPreviousClick);
+  introNextButton?.addEventListener('click', handleIntroNextClick);
+  introStartButton?.addEventListener('click', handleIntroStartClick);
 
   fullscreenButton?.addEventListener('click', async () => {
     if (!document.fullscreenElement) {
@@ -1676,6 +1994,10 @@ export function startDockyardApp() {
   howToPlayCloseButton?.addEventListener('click', () => howToPlayDialog?.close());
   howToPlayDialog?.addEventListener('click', (event) => {
     if (event.target === howToPlayDialog) howToPlayDialog.close();
+  });
+  winDialogCloseButton?.addEventListener('click', () => winDialog?.close());
+  winDialog?.addEventListener('click', (event) => {
+    if (event.target === winDialog) winDialog.close();
   });
 
   window.addEventListener('resize', cameraSystem.resize);

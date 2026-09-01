@@ -241,7 +241,10 @@ export class MockMegaBlockClient {
 }
 
 function chooseCrashFloor(maxFloor) {
-  return maxFloor;
+  // Keep mock rounds deterministic for the full completion flow: the crash
+  // floor is just beyond the final playable block, so every stack reaches its
+  // automatic win and triggers the ship handoff.
+  return maxFloor + 1;
 }
 
 function multiplierForFloor(floor, maxFloor) {

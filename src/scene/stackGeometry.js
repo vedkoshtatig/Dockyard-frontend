@@ -13,6 +13,9 @@ import {
   normalizeObjectKey,
 } from './objectLookup.js';
 
+const brandedFallingBlockTextures = new WeakMap();
+const FALLING_BLOCK_BRAND = 'TRUEIGTECH';
+
 export function createFallingBlockTemplate(source, definition) {
   const group = new THREE.Group();
   group.name = `${definition.label} template`;
@@ -88,7 +91,7 @@ function createMatteFallingBlockMaterial(material) {
       : new THREE.Color(0x000000),
     emissiveMap: material.emissiveMap ?? null,
     emissiveIntensity: Math.min(material.emissiveIntensity ?? 0, 0.12),
-    map: material.map ?? null,
+    map: createBrandedFallingBlockTexture(material.map),
     name: material.name,
     opacity: material.opacity,
     side: material.side,
@@ -103,6 +106,75 @@ function createMatteFallingBlockMaterial(material) {
   };
 
   return matteMaterial;
+}
+
+function createBrandedFallingBlockTexture(sourceTexture) {
+  if (!sourceTexture?.image?.width || !sourceTexture.image.height) {
+    return sourceTexture ?? null;
+  }
+
+  const cachedTexture = brandedFallingBlockTextures.get(sourceTexture);
+  if (cachedTexture) {
+    return cachedTexture;
+  }
+
+  const sourceImage = sourceTexture.image;
+  const canvas = document.createElement('canvas');
+  canvas.width = sourceImage.width;
+  canvas.height = sourceImage.height;
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    return sourceTexture;
+  }
+
+  context.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+  paintContainerBrand(context, canvas.width, canvas.height);
+
+  const brandedTexture = new THREE.CanvasTexture(canvas);
+  brandedTexture.colorSpace = sourceTexture.colorSpace;
+  brandedTexture.flipY = false;
+  brandedTexture.wrapS = sourceTexture.wrapS;
+  brandedTexture.wrapT = sourceTexture.wrapT;
+  brandedTexture.repeat.copy(sourceTexture.repeat);
+  brandedTexture.offset.copy(sourceTexture.offset);
+  brandedTexture.center.copy(sourceTexture.center);
+  brandedTexture.rotation = sourceTexture.rotation;
+  brandedTexture.needsUpdate = true;
+  brandedFallingBlockTextures.set(sourceTexture, brandedTexture);
+
+  return brandedTexture;
+}
+
+function paintContainerBrand(context, width, height) {
+  paintBrandPatch(context, width * 0.278, height * 0.313, width * 0.35, height * 0.078, 0);
+  paintBrandPatch(context, width * 0.145, height * 0.72, width * 0.33, height * 0.082, Math.PI / 2);
+}
+
+function paintBrandPatch(context, centerX, centerY, patchWidth, patchHeight, rotation) {
+  context.save();
+  context.translate(centerX, centerY);
+  context.rotate(rotation);
+
+  // The subtle panel beneath the type covers the original baked-in wording,
+  // while keeping the label at home on the worn container surface.
+  context.fillStyle = 'rgba(94, 117, 146, 0.86)';
+  context.fillRect(-patchWidth / 2, -patchHeight / 2, patchWidth, patchHeight);
+  context.strokeStyle = 'rgba(28, 48, 74, 0.2)';
+  context.lineWidth = Math.max(1, patchHeight * 0.045);
+  for (let x = -patchWidth / 2; x <= patchWidth / 2; x += patchHeight * 0.32) {
+    context.beginPath();
+    context.moveTo(x, -patchHeight / 2);
+    context.lineTo(x, patchHeight / 2);
+    context.stroke();
+  }
+
+  context.fillStyle = '#e4e9e8';
+  context.font = `800 ${Math.round(patchHeight * 0.63)}px Arial, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(FALLING_BLOCK_BRAND, 0, 1);
+  context.restore();
 }
 
 export function measureDockyardStackAnchor(root, scene) {

@@ -275,9 +275,14 @@ export function createCameraSystem({
 
   function frameBaseStackAtViewPosition() {
     if (LOCK_CAMERA_TO_BLENDER_VIEW) {
+      // A restored stack can begin auto-following while the remaining scene
+      // assets load. Always keep the Blender view as the base snapshot, or
+      // that temporary raised position becomes the new base and the stack
+      // rise gets added a second time after reload.
+      camera.position.copy(defaultCamera);
+      controls.target.copy(defaultTarget);
+      controls.update();
       baseStackTopProjectedY = getProjectedY(getStackTopPoint(getFirstStackTopY()));
-      defaultCamera = camera.position.clone();
-      defaultTarget = controls.target.clone();
       currentFollowBlocks = 0;
       return;
     }

@@ -11,40 +11,20 @@
       <canvas id="scene"></canvas>
       <div id="loader" class="loader" role="status">Loading dockyard</div>
     </main>
-    <div class="hud" aria-label="Game HUD">
-      <div class="hud__brand">
-        <span class="brand-mark"></span>
-        <span>Dockyard Stack</span>
+    <section class="intro-slideshow" id="intro-slideshow" aria-label="Dockyard Stack intro">
+      <div class="intro-slideshow__stage">
+        <img class="intro-slideshow__slide is-active" src="/ChatGPT%20Image%20Sep%201,%202026,%2005_22_07%20PM.png" alt="Dockyard Stack loading screen" />
       </div>
-      <div class="hud__stats">
-        <span id="data-mode">API data</span>
-        <span id="fps">-- fps</span>
-        <span id="status">Loading dockyard</span>
-        <div class="hud__actions">
-          <button class="icon-button" id="how-to-play-open" type="button" title="How to play" aria-label="How to play">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M9.8 9a2.3 2.3 0 1 1 3.7 1.8c-.9.6-1.5 1.1-1.5 2.2" />
-              <path d="M12 17h.01" />
-            </svg>
-          </button>
-          <button class="icon-button" id="reset-view" type="button" title="Go to stack top" aria-label="Go to stack top">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 12a9 9 0 1 0 3-6.7" />
-              <path d="M3 4v6h6" />
-            </svg>
-          </button>
-          <button class="icon-button" id="fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 3H3v5" />
-              <path d="M16 3h5v5" />
-              <path d="M21 16v5h-5" />
-              <path d="M8 21H3v-5" />
-            </svg>
-          </button>
+      <div class="intro-slideshow__controls">
+        <div class="intro-slideshow__navigation intro-slideshow__navigation--loading">
+          <div class="intro-slideshow__progress" role="progressbar" aria-label="Loading game assets" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span class="intro-slideshow__progress-bar" id="intro-progress-bar"></span>
+          </div>
         </div>
+        <button class="intro-start-button" id="intro-start" type="button" disabled>Loading</button>
       </div>
-    </div>
+    </section>
+
     <div class="camera-scroll" aria-label="Camera stack height control">
       <span aria-hidden="true">UP</span>
       <input
@@ -62,14 +42,28 @@
         <span>Balance</span>
         <strong id="balance">-- SC</strong>
       </div>
-      <label class="panel-value panel-value--difficulty">
+      <div class="panel-value panel-value--difficulty">
         <span>Difficulty</span>
-        <select id="difficulty">
+        <button
+          class="difficulty-trigger"
+          id="difficulty-trigger"
+          type="button"
+          aria-controls="difficulty-menu"
+          aria-expanded="false"
+        >
+          Easy
+        </button>
+        <select id="difficulty" aria-hidden="true" tabindex="-1">
           <option value="easy">Easy</option>
           <option value="medium">Medium</option>
           <option value="hard">Hard</option>
         </select>
-      </label>
+        <div class="difficulty-menu" id="difficulty-menu" role="menu" aria-label="Choose difficulty" hidden>
+          <button type="button" role="menuitemradio" aria-checked="true" data-difficulty-option="easy">Easy</button>
+          <button type="button" role="menuitemradio" aria-checked="false" data-difficulty-option="medium">Medium</button>
+          <button type="button" role="menuitemradio" aria-checked="false" data-difficulty-option="hard">Hard</button>
+        </div>
+      </div>
       <button class="cashout-button" id="cash-out" type="button" disabled>Cash Out</button>
       <label class="panel-value panel-value--bet">
         <span>Bet</span>
@@ -82,6 +76,14 @@
           <path d="M3 12a9 9 0 1 0 3-6.7" />
           <path d="M3 4v6h6" />
         </svg>
+      </button>
+      <button class="how-to-play-button" id="how-to-play-open" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9.8 9a2.3 2.3 0 1 1 3.7 1.8c-.9.6-1.5 1.1-1.5 2.2" />
+          <path d="M12 17h.01" />
+        </svg>
+        <span>How to Play</span>
       </button>
       <div class="round-details" id="round-details">No active round</div>
     </div>
@@ -125,6 +127,26 @@
         <div class="how-to-play__warning">
           If a block crashes, the round ends and the bet is lost. Only bet what you are comfortable losing.
         </div>
+      </div>
+    </dialog>
+    <dialog class="win-dialog" id="win-dialog" aria-labelledby="win-dialog-title">
+      <div class="win-dialog__content">
+        <div class="win-dialog__mast" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="win-dialog__seal" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none">
+            <path d="M18 32.5 27.2 42 47 21.5" />
+          </svg>
+        </div>
+        <span class="win-dialog__eyebrow">Cargo secured</span>
+        <h2 id="win-dialog-title">Payout confirmed</h2>
+        <strong class="win-dialog__amount" id="win-amount">--</strong>
+        <div class="win-dialog__details">
+          <span><small>Multiplier</small><b id="win-multiplier">--x</b></span>
+          <span><small>Stack</small><b id="win-blocks">-- blocks</b></span>
+        </div>
+        <button class="win-dialog__close" id="win-dialog-close" type="button">Back to dock</button>
       </div>
     </dialog>
     <script type="module" src="/src/main.js"></script>
