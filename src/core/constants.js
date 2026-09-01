@@ -45,7 +45,12 @@ export const AMBIENT_BOAT_SPEED_RANGE = [2.8, 5.8];
 export const AMBIENT_BOAT_LANE_RADIUS_RANGE = [320, 760];
 export const AMBIENT_BOAT_EDGE_PADDING = 80;
 export const AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS = 180;
-export const AMBIENT_BOAT_WATER_OFFSET = 0.18;
+// Boat assets are aligned to their lowest hull point. Keep that point above
+// the water, with extra clearance for boats near the curved horizon.
+export const AMBIENT_BOAT_WATER_OFFSET = 1.05;
+export const AMBIENT_BOAT_HORIZON_LIFT = 0.85;
+export const AMBIENT_BOAT_HORIZON_LIFT_START = 330;
+export const AMBIENT_BOAT_HORIZON_LIFT_END = 470;
 export const AMBIENT_BOAT_FORWARD_OFFSET = -Math.PI / 2;
 
 export const SHIP_INTRO_START_AXIS = new THREE.Vector3(0, 0, -1);

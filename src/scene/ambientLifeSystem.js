@@ -18,6 +18,9 @@ import {
   AMBIENT_BOAT_DOCKYARD_COUNT,
   AMBIENT_BOAT_EDGE_PADDING,
   AMBIENT_BOAT_FORWARD_OFFSET,
+  AMBIENT_BOAT_HORIZON_LIFT,
+  AMBIENT_BOAT_HORIZON_LIFT_END,
+  AMBIENT_BOAT_HORIZON_LIFT_START,
   AMBIENT_BOAT_LANE_RADIUS_RANGE,
   AMBIENT_BOAT_LENGTH_RANGE,
   AMBIENT_BOAT_MODEL_CLEARANCE_RADIUS,
@@ -399,6 +402,20 @@ export function createAmbientLifeSystem({
       : water?.position?.y ?? 0;
 
     return { center, halfSize, level };
+  }
+
+  function getDistantBoatLift(position, waterInfo) {
+    const distanceFromWaterCenter = Math.hypot(
+      position.x - waterInfo.center.x,
+      position.y - waterInfo.center.z,
+    );
+    const horizonBlend = THREE.MathUtils.smoothstep(
+      distanceFromWaterCenter,
+      AMBIENT_BOAT_HORIZON_LIFT_START,
+      AMBIENT_BOAT_HORIZON_LIFT_END,
+    );
+
+    return horizonBlend * AMBIENT_BOAT_HORIZON_LIFT;
   }
 
   function getModelCenter() {
@@ -933,7 +950,9 @@ export function createAmbientLifeSystem({
     boat.position.addScaledVector(boat.moveDirection, moveDistance);
     constrainDockyardBoatToRouteBounds(boat, routeBounds);
 
-    const waterY = waterInfo.level + AMBIENT_BOAT_WATER_OFFSET;
+    const waterY = waterInfo.level
+      + AMBIENT_BOAT_WATER_OFFSET
+      + getDistantBoatLift(boat.position, waterInfo);
     const heave = Math.sin(elapsedSeconds * boat.heaveSpeed + boat.phase) * boat.heaveAmount;
     tempPosition.set(boat.position.x, waterY + heave, boat.position.y);
     tempNextPosition.set(
