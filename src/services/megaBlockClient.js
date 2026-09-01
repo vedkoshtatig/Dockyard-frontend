@@ -8,6 +8,7 @@ export function createMegaBlockClient() {
     : new MegaBlockApiClient({
       baseUrl: appEnv.apiBaseUrl,
       endpoints: appEnv.endpoints,
+      timeoutMs: appEnv.apiTimeoutMs,
     });
 }
 

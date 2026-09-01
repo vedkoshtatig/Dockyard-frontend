@@ -18,6 +18,7 @@ export class MegaBlockApiClient {
     this.token = null;
     this.apiBaseUrl = options.baseUrl.replace(/\/$/, '');
     this.endpoints = options.endpoints;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
   async launch(request) {
@@ -94,10 +95,20 @@ export class MegaBlockApiClient {
       headers.set('Authorization', `AccessToken=${this.token}`);
     }
 
-    const response = await fetch(url, {
-      ...init,
-      headers,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    let response;
+
+    try {
+      response = await fetch(url, { ...init, headers, signal: controller.signal });
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error(`MegaBlock API request timed out after ${this.timeoutMs}ms.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     let envelope;
 
