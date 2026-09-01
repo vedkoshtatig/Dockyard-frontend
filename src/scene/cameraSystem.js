@@ -36,6 +36,7 @@ export function createCameraSystem({
   onBaseReturnComplete = () => {},
   onIntroCameraFinished = () => {},
   onShipIntroFrame = () => {},
+  onShipIntroStarted = () => {},
   onStackBrowseActiveChange = () => {},
   renderer,
 } = {}) {
@@ -479,6 +480,7 @@ export function createCameraSystem({
       startTargetY,
       topTargetY,
     };
+    onShipIntroStarted();
 
     applyCameraState(getSliderCameraState(
       introCameraAnimation.startTargetY,

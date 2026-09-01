@@ -54,6 +54,7 @@ import { createTruckFollowerSystem } from '../scene/truckFollowers.js';
 import { setupWater, updateWater } from '../scene/water.js';
 import { createMegaBlockClient, getMegaBlockDataMode } from '../services/megaBlockClient.js';
 import { connectOriginalGamesBalanceSocket } from '../services/originalGamesSocket.js';
+import { createDockyardAudioSystem } from '../services/dockyardAudio.js';
 import { getUiElements } from '../ui/elements.js';
 import { formatAmount, formatPanelAmount, hasAtMostTwoDecimalPlaces } from '../ui/format.js';
 
@@ -137,6 +138,7 @@ export function startDockyardApp() {
     getStackAnchor: () => stackAnchor,
     getWater: () => water,
   });
+  const audioSystem = createDockyardAudioSystem();
   const ambientLifeSystem = createAmbientLifeSystem({
     scene,
     getModelRoot: () => modelRoot,
@@ -174,6 +176,7 @@ export function startDockyardApp() {
     onBaseReturnComplete: handleCameraBaseReturnComplete,
     onIntroCameraFinished: () => hangingLoadSystem.startIntroDescend(),
     onShipIntroFrame: () => floatingShipSystem.update(clock.elapsedTime, 0),
+    onShipIntroStarted: audioSystem.playHorn,
     onStackBrowseActiveChange: (isBrowsing) => hangingLoadSystem.setCameraStackBrowsing(isBrowsing),
     renderer,
   });
@@ -1329,6 +1332,7 @@ export function startDockyardApp() {
     if (progress >= STACK_CONTACT_PROGRESS) {
       if (!drop.hasImpacted) {
         drop.hasImpacted = true;
+        void audioSystem.playContainerImpact();
         effectsSystem.triggerLandingImpact(drop.part, drop.shouldCollapse);
       }
 
@@ -1673,7 +1677,10 @@ export function startDockyardApp() {
   });
 
   window.addEventListener('resize', cameraSystem.resize);
+  window.addEventListener('pointerdown', audioSystem.unlock, { once: true });
+  window.addEventListener('keydown', audioSystem.unlock, { once: true });
   window.addEventListener('beforeunload', () => disconnectBalanceSocket?.(), { once: true });
+  window.addEventListener('beforeunload', audioSystem.dispose, { once: true });
   void initializeGameSession();
   updateControls();
   animate();
