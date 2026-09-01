@@ -28,6 +28,7 @@ export function createHangingLoadSystem({
   setGameStatus = () => {},
 } = {}) {
   let hangingLoad = null;
+  let cameraStackBrowsing = false;
   let baseVisibleTopProjectedY = null;
   const hangingLoadQuaternion = new THREE.Quaternion();
   const hangingLoadBounds = new THREE.Box3();
@@ -265,6 +266,10 @@ export function createHangingLoadSystem({
     hangingLoad.pivot.visible = isVisible;
   }
 
+  function hideAssembly() {
+    setAssemblyVisible(false);
+  }
+
   function updateCarrierVisibility() {
     setCarrierVisible(false);
   }
@@ -306,7 +311,11 @@ export function createHangingLoadSystem({
   function getBasePosition() {
     const position = hangingLoad.initialBasePosition.clone();
     position.y += getStackLift(position);
-    return getVisibleReadyPosition(position);
+    return cameraStackBrowsing ? position : getVisibleReadyPosition(position);
+  }
+
+  function setCameraStackBrowsing(isBrowsing) {
+    cameraStackBrowsing = Boolean(isBrowsing);
   }
 
   function getStackLift(basePosition) {
@@ -407,9 +416,10 @@ export function createHangingLoadSystem({
     return new THREE.Vector3(carrierPoint.center.x, carrierPoint.bottomY, carrierPoint.center.z);
   }
 
-  function startIntroDescend() {
+  function startIntroDescend(onDescended = () => {}) {
     if (!hangingLoad) {
       onIntroControlsUnlocked();
+      onDescended();
       return;
     }
 
@@ -430,6 +440,7 @@ export function createHangingLoadSystem({
         updateCarrierVisibility();
         captureVisibleTopProjection();
         onIntroControlsUnlocked();
+        onDescended();
       },
       phase: 'descending',
       startPosition,
@@ -723,10 +734,12 @@ export function createHangingLoadSystem({
     getMountLocalPosition,
     getPivotPositionArray,
     hasLoad,
+    hideAssembly,
     isHoldingObject,
     isSettled,
     prepareForStackMount,
     resetToBase,
+    setCameraStackBrowsing,
     setup,
     settleAfterDrop,
     startIntroDescend,

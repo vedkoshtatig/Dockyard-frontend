@@ -36,16 +36,125 @@ export function createCameraSystem({
   onBaseReturnComplete = () => {},
   onIntroCameraFinished = () => {},
   onShipIntroFrame = () => {},
+  onStackBrowseActiveChange = () => {},
   renderer,
 } = {}) {
   let defaultCamera = null;
   let defaultTarget = null;
   let cameraTargetMinY = 0;
+  let automaticMinDistance = 0.2;
+  let automaticMaxDistance = 500;
   let baseStackTopProjectedY = null;
   let introCameraAnimation = null;
   let collapseCameraStartFollowBlocks = 0;
   let currentFollowBlocks = 0;
   let returningCameraToBase = false;
+  let topReturnAnimation = null;
+  let manualCameraActive = false;
+  let manualOrbitBoundsActive = false;
+  let manualFollowReferenceBlocks = null;
+  let manualPanRadius = 2;
+  let manualTargetMinY = -Infinity;
+  let manualTargetMaxY = Infinity;
+  let stackBrowsePointerId = null;
+  let stackBrowseStartY = 0;
+  let stackBrowseStartBlocks = 0;
+
+  controls.addEventListener('start', beginManualCameraControl);
+  controls.addEventListener('change', limitDownwardManualPan);
+  renderer.domElement.addEventListener('pointerdown', startMouseStackBrowse);
+  renderer.domElement.addEventListener('pointermove', updateMouseStackBrowse);
+  renderer.domElement.addEventListener('pointerup', stopMouseStackBrowse);
+  renderer.domElement.addEventListener('pointercancel', stopMouseStackBrowse);
+  renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  function startMouseStackBrowse(event) {
+    if (event.button !== 2 || introCameraAnimation || !defaultCamera || !defaultTarget) return;
+    event.preventDefault();
+    topReturnAnimation = null;
+    clearManualCameraControl();
+    stackBrowsePointerId = event.pointerId;
+    stackBrowseStartY = event.clientY;
+    stackBrowseStartBlocks = currentFollowBlocks;
+    manualCameraActive = true;
+    manualOrbitBoundsActive = false;
+    manualFollowReferenceBlocks = getStackFollowBlocksForTopY(getCurrentStackTopY());
+    onStackBrowseActiveChange(true);
+    renderer.domElement.setPointerCapture?.(event.pointerId);
+  }
+
+  function updateMouseStackBrowse(event) {
+    if (event.pointerId !== stackBrowsePointerId) return;
+    event.preventDefault();
+    const maxFollowBlocks = getStackFollowBlocksForTopY(getCurrentStackTopY());
+    const browsePixels = Math.max(Math.min(window.innerHeight * 0.5, 360), 180);
+    const blockDelta = ((stackBrowseStartY - event.clientY) / browsePixels) * Math.max(maxFollowBlocks, 1);
+    const desiredFollowBlocks = THREE.MathUtils.clamp(stackBrowseStartBlocks + blockDelta, 0, maxFollowBlocks);
+    applyCameraState(getStackFollowCameraState(desiredFollowBlocks));
+    controls.update();
+  }
+
+  function stopMouseStackBrowse(event) {
+    if (event.pointerId !== stackBrowsePointerId) return;
+    renderer.domElement.releasePointerCapture?.(event.pointerId);
+    stackBrowsePointerId = null;
+  }
+
+  function limitDownwardManualPan() {
+    if (!manualCameraActive) return;
+    const clampedTargetY = THREE.MathUtils.clamp(controls.target.y, manualTargetMinY, manualTargetMaxY);
+    const correction = clampedTargetY - controls.target.y;
+    if (correction === 0) return;
+    controls.target.y = clampedTargetY;
+    camera.position.y += correction;
+  }
+
+  function beginManualCameraControl() {
+    if (!defaultCamera || !defaultTarget || introCameraAnimation || manualOrbitBoundsActive) return;
+
+    topReturnAnimation = null;
+    manualCameraActive = true;
+    manualOrbitBoundsActive = true;
+    manualFollowReferenceBlocks = getStackFollowBlocksForTopY(getCurrentStackTopY());
+    const offset = camera.position.clone().sub(controls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    const maxFollowBlocks = getStackFollowBlocksForTopY(getCurrentStackTopY());
+    const atStackTop = maxFollowBlocks <= 0.05 || currentFollowBlocks >= maxFollowBlocks - 0.05;
+    const atStackBottom = currentFollowBlocks <= 0.05;
+    const orbitX = THREE.MathUtils.degToRad(atStackTop || atStackBottom ? 6 : 11);
+    const orbitUp = THREE.MathUtils.degToRad(atStackTop ? 0 : 4);
+    const orbitDown = THREE.MathUtils.degToRad(atStackBottom ? 0 : 3);
+    const distance = Math.max(offset.length(), 0.01);
+
+    controls.minAzimuthAngle = spherical.theta - orbitX;
+    controls.maxAzimuthAngle = spherical.theta + orbitX;
+    controls.minPolarAngle = Math.max(0.05, spherical.phi - orbitUp);
+    controls.maxPolarAngle = Math.min(Math.PI - 0.05, spherical.phi + orbitDown);
+    controls.minDistance = distance * 0.88;
+    controls.maxDistance = distance * 1.12;
+    controls.cursor.copy(controls.target);
+    manualTargetMinY = atStackBottom ? controls.target.y : cameraTargetMinY;
+    manualTargetMaxY = atStackTop ? controls.target.y : controls.target.y + manualPanRadius * 0.28;
+    controls.minTargetRadius = 0;
+    controls.maxTargetRadius = manualPanRadius;
+  }
+
+  function clearManualCameraControl(endStackBrowse = true) {
+    manualCameraActive = false;
+    manualOrbitBoundsActive = false;
+    manualFollowReferenceBlocks = null;
+    manualTargetMinY = -Infinity;
+    manualTargetMaxY = Infinity;
+    controls.minAzimuthAngle = -Infinity;
+    controls.maxAzimuthAngle = Infinity;
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = Math.PI;
+    controls.minTargetRadius = 0;
+    controls.maxTargetRadius = Infinity;
+    controls.minDistance = automaticMinDistance;
+    controls.maxDistance = automaticMaxDistance;
+    if (endStackBrowse) onStackBrowseActiveChange(false);
+  }
 
   function frameObject(object) {
     const box = new THREE.Box3().setFromObject(object);
@@ -58,6 +167,7 @@ export function createCameraSystem({
     const framedBox = new THREE.Box3().setFromObject(object);
     const framedSize = framedBox.getSize(new THREE.Vector3());
     const framedMaxDim = Math.max(framedSize.x, framedSize.y, framedSize.z, maxDim);
+    manualPanRadius = Math.max(framedMaxDim * 0.018, 1.5);
 
     camera.fov = BLENDER_CAMERA_VIEW.fov;
     camera.up.copy(BLENDER_CAMERA_VIEW.up).normalize();
@@ -69,8 +179,10 @@ export function createCameraSystem({
     camera.far = Math.max(cameraDistance + framedMaxDim * 6, 1000);
     camera.updateProjectionMatrix();
 
-    controls.maxDistance = Math.max(cameraDistance * 4, framedMaxDim * 2);
-    controls.minDistance = Math.max(cameraDistance / 100, 0.2);
+    automaticMaxDistance = Math.max(cameraDistance * 4, framedMaxDim * 2);
+    automaticMinDistance = Math.max(cameraDistance / 100, 0.2);
+    controls.maxDistance = automaticMaxDistance;
+    controls.minDistance = automaticMinDistance;
     controls.update();
 
     defaultCamera = camera.position.clone();
@@ -96,9 +208,11 @@ export function createCameraSystem({
 
   function resetView() {
     if (!defaultCamera || !defaultTarget) return;
+    clearManualCameraControl();
     const wasIntroCameraActive = Boolean(introCameraAnimation);
     introCameraAnimation = null;
     returningCameraToBase = false;
+    topReturnAnimation = null;
     currentFollowBlocks = 0;
     camera.position.copy(defaultCamera);
     controls.target.copy(defaultTarget);
@@ -108,6 +222,46 @@ export function createCameraSystem({
     if (wasIntroCameraActive) {
       onIntroCameraFinished();
     }
+  }
+
+  function moveToStackTop() {
+    if (!defaultCamera || !defaultTarget) return;
+    introCameraAnimation = null;
+    returningCameraToBase = false;
+    clearManualCameraControl(false);
+    const topFollowBlocks = getStackFollowBlocksForTopY(getCurrentStackTopY());
+    const topState = getStackFollowCameraState(topFollowBlocks);
+    topReturnAnimation = {
+      duration: 0.8,
+      elapsed: 0,
+      endPosition: topState.position,
+      endTarget: topState.target,
+      endFollowBlocks: topFollowBlocks,
+      startPosition: camera.position.clone(),
+      startTarget: controls.target.clone(),
+      startFollowBlocks: currentFollowBlocks,
+    };
+  }
+
+  function updateTopReturn(delta) {
+    if (!topReturnAnimation) return false;
+    topReturnAnimation.elapsed += delta;
+    const progress = THREE.MathUtils.clamp(topReturnAnimation.elapsed / topReturnAnimation.duration, 0, 1);
+    const eased = easeInOutSmoother(progress);
+    camera.position.lerpVectors(topReturnAnimation.startPosition, topReturnAnimation.endPosition, eased);
+    controls.target.lerpVectors(topReturnAnimation.startTarget, topReturnAnimation.endTarget, eased);
+    currentFollowBlocks = THREE.MathUtils.lerp(
+      topReturnAnimation.startFollowBlocks,
+      topReturnAnimation.endFollowBlocks,
+      eased,
+    );
+    controls.update();
+    updateSlider();
+    if (progress >= 1) {
+      topReturnAnimation = null;
+      onStackBrowseActiveChange(false);
+    }
+    return true;
   }
 
   function resize() {
@@ -387,7 +541,15 @@ export function createCameraSystem({
       return;
     }
 
+    if (updateTopReturn(delta)) return;
+
     const targetFollowBlocks = getStackFollowBlocksForTopY(getCurrentStackTopY());
+    if (manualCameraActive) {
+      const hasNewStackHeight = Math.abs(targetFollowBlocks - (manualFollowReferenceBlocks ?? targetFollowBlocks)) > 0.05;
+      if (!hasNewStackHeight) return;
+      clearManualCameraControl();
+    }
+
     const followSpeed = getActiveDrop()
       ? CAMERA_STACK_FOLLOW_SPEED * 1.25
       : CAMERA_STACK_FOLLOW_SPEED;
@@ -435,7 +597,13 @@ export function createCameraSystem({
   }
 
   function requestBaseReturn() {
+    clearManualCameraControl();
+    topReturnAnimation = null;
     returningCameraToBase = true;
+  }
+
+  function resumeAutomaticFollow() {
+    clearManualCameraControl();
   }
 
   function updateBaseReturn(delta) {
@@ -457,7 +625,7 @@ export function createCameraSystem({
   }
 
   function moveFromSlider() {
-    if (!cameraHeightElement || LOCK_CAMERA_TO_BLENDER_VIEW) {
+    if (!cameraHeightElement) {
       return;
     }
 
@@ -468,7 +636,11 @@ export function createCameraSystem({
     const ratio = (Number(cameraHeightElement.value) - sliderMin) / (sliderMax - sliderMin);
     const desiredFollowBlocks = Math.max(maxFollowBlocks * ratio, 0);
 
+    clearManualCameraControl();
     applyCameraState(getStackFollowCameraState(desiredFollowBlocks));
+    manualCameraActive = true;
+    manualFollowReferenceBlocks = maxFollowBlocks;
+    onStackBrowseActiveChange(true);
     controls.update();
   }
 
@@ -505,8 +677,10 @@ export function createCameraSystem({
     frameObject,
     getIntroAnimation,
     getProjectedY,
+    moveToStackTop,
     moveFromSlider,
     requestBaseReturn,
+    resumeAutomaticFollow,
     resetView,
     resize,
     startCollapseFollow,

@@ -7,7 +7,6 @@ import {
   COLLAPSE_GRAVITY,
   DESTROY_BELOW_GROUND_DISTANCE,
   FALLBACK_STACK_ANCHOR,
-  LOCK_CAMERA_TO_BLENDER_VIEW,
   STACK_BLOCK_DEFINITIONS,
   STACK_BLOCK_SCALE,
   STACK_CONTACT_PROGRESS,
@@ -54,6 +53,7 @@ import { createThreeScene } from '../scene/threeScene.js';
 import { createTruckFollowerSystem } from '../scene/truckFollowers.js';
 import { setupWater, updateWater } from '../scene/water.js';
 import { createMegaBlockClient, getMegaBlockDataMode } from '../services/megaBlockClient.js';
+import { connectOriginalGamesBalanceSocket } from '../services/originalGamesSocket.js';
 import { getUiElements } from '../ui/elements.js';
 import { formatAmount, formatPanelAmount, hasAtMostTwoDecimalPlaces } from '../ui/format.js';
 
@@ -70,6 +70,11 @@ export function startDockyardApp() {
     difficultyElement,
     fpsElement,
     fullscreenButton,
+    howToPlayCloseButton,
+    howToPlayDialog,
+    howToPlayDifficultyGuide,
+    howToPlayLimits,
+    howToPlayOpenButton,
     loaderEl,
     resetButton,
     resetRoundButton,
@@ -117,8 +122,10 @@ export function startDockyardApp() {
   let introControlsLocked = true;
   let resetInProgress = false;
   let collapseSettled = null;
+  let collapseRecoveryPending = false;
   let settings = null;
   const gameClient = createMegaBlockClient();
+  let disconnectBalanceSocket = null;
   let gameState = { ...initialGameState };
   let unfinishedGatePending = true;
   let frameCount = 0;
@@ -167,6 +174,7 @@ export function startDockyardApp() {
     onBaseReturnComplete: handleCameraBaseReturnComplete,
     onIntroCameraFinished: () => hangingLoadSystem.startIntroDescend(),
     onShipIntroFrame: () => floatingShipSystem.update(clock.elapsedTime, 0),
+    onStackBrowseActiveChange: (isBrowsing) => hangingLoadSystem.setCameraStackBrowsing(isBrowsing),
     renderer,
   });
 
@@ -187,6 +195,7 @@ export function startDockyardApp() {
       const launch = await gameClient.launch(getLaunchRequest());
       gameState.currency = launch.currency;
       removeCasinoSessionFromUrl();
+      connectBalanceSocket(launch.token);
 
       settings = await gameClient.getSettings();
       applySettings(settings);
@@ -206,6 +215,31 @@ export function startDockyardApp() {
     } finally {
       updateControls();
     }
+  }
+
+  function connectBalanceSocket(token) {
+    disconnectBalanceSocket?.();
+    disconnectBalanceSocket = null;
+
+    if (getMegaBlockDataMode() === 'mock') return;
+
+    disconnectBalanceSocket = connectOriginalGamesBalanceSocket({
+      namespace: appEnv.socketNamespace,
+      onBalance: ({ balance, currency }) => {
+        gameState = {
+          ...gameState,
+          balance,
+          currency: currency || gameState.currency,
+        };
+        updateControls();
+      },
+      onConnectionError: () => {
+        // REST responses remain authoritative, so a socket outage must not
+        // interrupt an active round. Socket.IO will continue reconnecting.
+      },
+      origin: appEnv.socketOrigin,
+      token,
+    });
   }
 
   function getLaunchRequest() {
@@ -260,6 +294,37 @@ export function startDockyardApp() {
 
     if (difficultyElement) {
       difficultyElement.value = nextSettings.defaultDifficulty;
+    }
+
+    updateHowToPlay(nextSettings);
+  }
+
+  function updateHowToPlay(nextSettings) {
+    if (howToPlayLimits) {
+      howToPlayLimits.textContent = `${formatAmount(nextSettings.minBet, gameState.currency)} to ${formatAmount(
+        nextSettings.maxBet,
+        gameState.currency,
+      )}`;
+    }
+
+    if (howToPlayDifficultyGuide) {
+      const difficultyLabels = {
+        easy: 'Easy',
+        medium: 'Medium',
+        hard: 'Hard',
+      };
+      howToPlayDifficultyGuide.replaceChildren(
+        ...['easy', 'medium', 'hard'].filter((difficulty) => nextSettings.difficulties[difficulty]).map((difficulty) => {
+          const config = nextSettings.difficulties[difficulty];
+          const item = document.createElement('div');
+          const label = document.createElement('strong');
+          const blocks = document.createElement('span');
+          label.textContent = difficultyLabels[difficulty] ?? difficulty;
+          blocks.textContent = `${Number(config.maxFloor)} blocks`;
+          item.append(label, blocks);
+          return item;
+        }),
+      );
     }
   }
 
@@ -369,6 +434,7 @@ export function startDockyardApp() {
   }
 
   function handlePrimaryAction() {
+    cameraSystem.resumeAutomaticFollow();
     if (gameState.betId) {
       void dropBlock();
       return;
@@ -506,6 +572,7 @@ export function startDockyardApp() {
   async function cashOut() {
     if (
       unfinishedGatePending ||
+      collapseRecoveryPending ||
       !gameState.betId ||
       gameState.status !== 'active' ||
       gameState.completedFloorCount === 0
@@ -652,6 +719,7 @@ export function startDockyardApp() {
     const isResolvedRound = !hasActiveBet && (gameState.status === 'won' || gameState.status === 'lost');
     const isBusy =
       introControlsLocked ||
+      collapseRecoveryPending ||
       gameState.status === 'placing' ||
       gameState.status === 'dropping' ||
       gameState.status === 'cashingOut' ||
@@ -713,7 +781,7 @@ export function startDockyardApp() {
     }
 
     if (cameraHeightElement) {
-      cameraHeightElement.disabled = introControlsLocked || LOCK_CAMERA_TO_BLENDER_VIEW;
+      cameraHeightElement.disabled = introControlsLocked;
     }
 
     if (resetButton) {
@@ -764,7 +832,7 @@ export function startDockyardApp() {
   function getSelectedDifficulty() {
     const value = difficultyElement?.value;
 
-    if (value === 'medium' || value === 'hard' || value === 'hardcore') {
+    if (value === 'medium' || value === 'hard') {
       return value;
     }
 
@@ -811,6 +879,18 @@ export function startDockyardApp() {
   }
 
   function handleCameraBaseReturnComplete() {
+    if (collapseRecoveryPending) {
+      mountNextStackPart();
+      hangingLoadSystem.startIntroDescend(() => {
+        collapseRecoveryPending = false;
+        setGameStatus('Ready to place bet');
+        updateControls();
+      });
+      setGameStatus('Next block incoming');
+      updateControls();
+      return;
+    }
+
     if (resetInProgress) {
       resetInProgress = false;
       updateControls();
@@ -1015,20 +1095,62 @@ export function startDockyardApp() {
       0,
       Math.min(gameState.maxFloor, stackParts.length),
     );
+    let restoredTopY = stackAnchor.topY;
 
     for (let index = 0; index < visibleCount; index += 1) {
       const part = stackParts[index];
+      const variation = getRestoredBlockVariation(index);
       attachPartToStack(part);
       part.object.visible = true;
-      part.object.rotation.set(part.baseRotationX, part.baseRotationY, part.baseRotationZ);
+      part.object.rotation.set(
+        part.baseRotationX,
+        part.baseRotationY + variation.rotationY,
+        part.baseRotationZ,
+      );
       part.object.scale.copy(part.baseScale);
-      placePartOnStack(part.object, part.finalY);
-      currentStackTopY = Math.max(currentStackTopY, part.topY);
+      placeObjectParentBottomCenter(
+        part.object,
+        stackAnchor.center.x + variation.x,
+        stackAnchor.center.z + variation.z,
+        restoredTopY - STACK_VERTICAL_OVERLAP,
+      );
+      const restoredBounds = getObjectParentSpaceBox(part.object);
+      restoredTopY = restoredBounds.max.y;
     }
+
+    currentStackTopY = restoredTopY;
 
     stackIndex = visibleCount;
     mountNextStackPart();
     updateControls();
+  }
+
+  function getRestoredBlockVariation(index) {
+    const seed = `${gameState.betId ?? 'restored-round'}:${index}`;
+    const randomX = seededUnitInterval(`${seed}:x`) * 2 - 1;
+    const randomZ = seededUnitInterval(`${seed}:z`) * 2 - 1;
+    const randomRotation = seededUnitInterval(`${seed}:rotation`) * 2 - 1;
+    const progress = THREE.MathUtils.clamp(
+      index / Math.max(STACK_RANDOM_DEVIATION_RAMP_BLOCKS, 1),
+      0,
+      1,
+    );
+    const xRange = THREE.MathUtils.lerp(STACK_RANDOM_X_RANGE, STACK_RANDOM_MAX_X_RANGE, progress) * 0.62;
+
+    return {
+      rotationY: randomRotation * THREE.MathUtils.degToRad(STACK_RANDOM_Y_ROTATION_DEGREES) * 0.55,
+      x: randomX * xRange,
+      z: randomZ * STACK_RANDOM_Z_RANGE,
+    };
+  }
+
+  function seededUnitInterval(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) / 4294967295;
   }
 
   function resetStackPool() {
@@ -1403,10 +1525,11 @@ export function startDockyardApp() {
 
     if (visibleBlocks === 0) {
       collapsingBlocks.length = 0;
-      cameraSystem.requestBaseReturn();
+      collapseRecoveryPending = true;
       resetStackPool();
-      mountNextStackPart();
-      setGameStatus('Tower collapsed');
+      hangingLoadSystem.hideAssembly();
+      cameraSystem.requestBaseReturn();
+      setGameStatus('Returning to dockyard');
       if (stackButton) {
         stackButton.disabled = true;
         stackButton.textContent = 'Resetting';
@@ -1585,10 +1708,10 @@ export function startDockyardApp() {
     }
   );
 
-  resetButton?.addEventListener('click', cameraSystem.resetView);
+  resetButton?.addEventListener('click', cameraSystem.moveToStackTop);
   stackButton?.addEventListener('click', handlePrimaryAction);
   cashOutButton?.addEventListener('click', cashOut);
-  resetRoundButton?.addEventListener('click', resetRound);
+  resetRoundButton?.addEventListener('click', cameraSystem.moveToStackTop);
   cameraHeightElement?.addEventListener('input', cameraSystem.moveFromSlider);
   amountElement?.addEventListener('input', handleAmountInput);
   difficultyElement?.addEventListener('change', handleDifficultyChange);
@@ -1602,7 +1725,14 @@ export function startDockyardApp() {
     }
   });
 
+  howToPlayOpenButton?.addEventListener('click', () => howToPlayDialog?.showModal());
+  howToPlayCloseButton?.addEventListener('click', () => howToPlayDialog?.close());
+  howToPlayDialog?.addEventListener('click', (event) => {
+    if (event.target === howToPlayDialog) howToPlayDialog.close();
+  });
+
   window.addEventListener('resize', cameraSystem.resize);
+  window.addEventListener('beforeunload', () => disconnectBalanceSocket?.(), { once: true });
   void initializeGameSession();
   updateControls();
   animate();

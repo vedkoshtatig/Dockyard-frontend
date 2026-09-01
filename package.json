@@ -11,6 +11,7 @@
     "export:blend": "npm run export:model"
   },
   "dependencies": {
+    "socket.io-client": "^4.8.3",
     "three": "^0.160.0"
   },
   "devDependencies": {

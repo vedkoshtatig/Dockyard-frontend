@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { LOCK_CAMERA_TO_BLENDER_VIEW } from '../core/constants.js';
 
 export function createThreeScene({ canvas, cameraHeightElement }) {
   const scene = new THREE.Scene();
@@ -29,20 +28,23 @@ export function createThreeScene({ canvas, cameraHeightElement }) {
   environment.dispose();
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enabled = !LOCK_CAMERA_TO_BLENDER_VIEW;
-  controls.enableDamping = !LOCK_CAMERA_TO_BLENDER_VIEW;
+  controls.enabled = true;
+  controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.enablePan = !LOCK_CAMERA_TO_BLENDER_VIEW;
-  controls.enableRotate = !LOCK_CAMERA_TO_BLENDER_VIEW;
-  controls.enableZoom = !LOCK_CAMERA_TO_BLENDER_VIEW;
+  controls.enablePan = true;
+  controls.enableRotate = true;
+  controls.enableZoom = true;
   controls.screenSpacePanning = true;
   controls.minDistance = 1;
   controls.maxDistance = 500;
-  controls.zoomSpeed = 0.8;
-  controls.panSpeed = 0.7;
+  controls.zoomSpeed = 0.45;
+  controls.panSpeed = 0.35;
+  controls.rotateSpeed = 0.35;
+  // Right-drag is reserved for vertical stack browsing in cameraSystem.
+  controls.mouseButtons.RIGHT = null;
 
   if (cameraHeightElement) {
-    cameraHeightElement.disabled = LOCK_CAMERA_TO_BLENDER_VIEW;
+    cameraHeightElement.disabled = false;
   }
 
   scene.fog = new THREE.FogExp2(0xaed3e2, 0.00056);
