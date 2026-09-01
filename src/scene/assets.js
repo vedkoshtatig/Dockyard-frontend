@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isNamedSkyboxObject } from './objectLookup.js';
+import { baseObjectName, isNamedSkyboxObject, materialsForObject } from './objectLookup.js';
 
 const TEXTURE_BY_MATERIAL = {
   'Material.051': 'zone.jpg',
@@ -16,6 +16,19 @@ const TEXTURE_BY_MATERIAL = {
   'Material.007': 'factory_Base_Color.jpg',
 };
 
+function isMovingImportedShadowCaster(object) {
+  const name = baseObjectName(object.name);
+
+  if (name.startsWith('truck') || name.includes('hanging')) {
+    return true;
+  }
+
+  return materialsForObject(object).some((material) => {
+    const materialName = material?.name?.toLowerCase() ?? '';
+    return materialName.includes('truck');
+  });
+}
+
 export function applyManualTextures(root, textureLoader = new THREE.TextureLoader()) {
   const textureCache = new Map();
 
@@ -23,7 +36,7 @@ export function applyManualTextures(root, textureLoader = new THREE.TextureLoade
     if (!object.isMesh) return;
     if (isNamedSkyboxObject(object)) return;
 
-    object.castShadow = true;
+    object.castShadow = isMovingImportedShadowCaster(object);
     object.receiveShadow = true;
 
     const materials = Array.isArray(object.material) ? object.material : [object.material];

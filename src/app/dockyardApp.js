@@ -913,21 +913,20 @@ export function startDockyardApp() {
     updateControls();
   }
 
-  async function setupFallingBlockStack(loader) {
+  async function setupFallingBlockStack(templatePromise) {
     stackParts = [];
     stackIndex = 0;
     activeDrop = null;
 
-    const loadedTemplates = await Promise.all(
-      STACK_BLOCK_DEFINITIONS.map(async (definition) => {
-        const gltf = await loader.loadAsync(getAssetUrl(definition.url));
-        return {
-          definition,
-          object: createFallingBlockTemplate(gltf.scene, definition),
-        };
-      }),
-    );
-    const templates = loadedTemplates.filter((template) => Boolean(template.object));
+    const templateResults = await templatePromise;
+    const failedTemplate = templateResults.find((result) => result.status === 'rejected');
+    if (failedTemplate) {
+      throw failedTemplate.reason;
+    }
+
+    const templates = templateResults
+      .map((result) => result.value)
+      .filter((template) => Boolean(template.object));
 
     if (!templates.length) {
       throw new Error('No usable falling block meshes were found.');
@@ -994,82 +993,9 @@ export function startDockyardApp() {
     }
   }
 
-  function getObjectParentSpaceBox(object) {
-    object.updateWorldMatrix(true, true);
-
-    const parentMatrixInverse = object.parent
-      ? new THREE.Matrix4().copy(object.parent.matrixWorld).invert()
-      : new THREE.Matrix4();
-    const box = new THREE.Box3();
-
-    object.traverse((child) => {
-      if (!child.isMesh || !child.geometry) {
-        return;
-      }
-
-      child.geometry.computeBoundingBox();
-      if (!child.geometry.boundingBox) {
-        return;
-      }
-
-      const childBox = child.geometry.boundingBox.clone();
-      childBox.applyMatrix4(child.matrixWorld);
-      childBox.applyMatrix4(parentMatrixInverse);
-      box.union(childBox);
-    });
-
-    if (box.isEmpty()) {
-      box.set(object.position, object.position);
-    }
-
-    return box;
-  }
-
-  function placeObjectParentBottomCenter(object, targetX, targetZ, targetBottomY) {
-    const box = getObjectParentSpaceBox(object);
-    const center = box.getCenter(new THREE.Vector3());
-
-    object.position.x += targetX - center.x;
-    object.position.z += targetZ - center.z;
-    object.position.y += targetBottomY - box.min.y;
-    object.updateMatrixWorld(true);
-
-    return object.position.y;
-  }
-
-  function placeObjectWorldBottomCenter(object, targetX, targetZ, targetBottomY) {
-    object.updateWorldMatrix(true, true);
-
-    const box = new THREE.Box3().setFromObject(object);
-    const center = box.getCenter(new THREE.Vector3());
-    const currentWorldPosition = new THREE.Vector3();
-    const targetWorldPosition = new THREE.Vector3();
-
-    object.getWorldPosition(currentWorldPosition);
-    targetWorldPosition.copy(currentWorldPosition);
-    targetWorldPosition.x += targetX - center.x;
-    targetWorldPosition.z += targetZ - center.z;
-    targetWorldPosition.y += targetBottomY - box.min.y;
-
-    object.position.copy(
-      object.parent ? object.parent.worldToLocal(targetWorldPosition) : targetWorldPosition,
-    );
-    object.updateMatrixWorld(true);
-
-    return object.position.y;
-  }
-
   function getStackWorldPoint(localX, localY, localZ) {
     const point = new THREE.Vector3(localX, localY, localZ);
     return stackAnchor.group ? stackAnchor.group.localToWorld(point) : point;
-  }
-
-  function getObjectBottomCenter(object) {
-    object.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(object);
-    const center = box.getCenter(new THREE.Vector3());
-
-    return new THREE.Vector3(center.x, box.min.y, center.z);
   }
 
   function getMountedHangingBlockTopPoint() {
@@ -1659,6 +1585,22 @@ export function startDockyardApp() {
   modelLoader.setPath('/models/');
   preferReliableGltfTextureLoader(modelLoader);
 
+  const craneMagnetPromise = modelLoader.loadAsync('Crane_Magnet.glb')
+    .then((gltf) => gltf.scene)
+    .catch((error) => {
+      console.warn('Crane magnet failed to load; using the imported hanging assembly.', error);
+      return null;
+    });
+  const fallingBlockTemplatePromise = Promise.allSettled(
+    STACK_BLOCK_DEFINITIONS.map(async (definition) => {
+      const gltf = await modelLoader.loadAsync(getAssetUrl(definition.url));
+      return {
+        definition,
+        object: createFallingBlockTemplate(gltf.scene, definition),
+      };
+    }),
+  );
+
   modelLoader.load(
     'dockyard.glb',
     async (gltf) => {
@@ -1673,13 +1615,7 @@ export function startDockyardApp() {
       water = setupWater(modelRoot, { scene, sunLight });
       truckFollowerSystem = createTruckFollowerSystem(modelRoot);
       floatingShipSystem.setup(modelRoot);
-      let craneMagnet = null;
-      try {
-        const magnetGltf = await modelLoader.loadAsync('Crane_Magnet.glb');
-        craneMagnet = magnetGltf.scene;
-      } catch (error) {
-        console.warn('Crane magnet failed to load; using the imported hanging assembly.', error);
-      }
+      const craneMagnet = await craneMagnetPromise;
       hangingLoadSystem.setup(modelRoot, craneMagnet);
       stackAnchor = measureDockyardStackAnchor(modelRoot, scene);
       currentStackTopY = stackAnchor.topY;
@@ -1687,7 +1623,7 @@ export function startDockyardApp() {
 
       try {
         await Promise.all([
-          setupFallingBlockStack(modelLoader),
+          setupFallingBlockStack(fallingBlockTemplatePromise),
           ambientLifeSystem.load(modelLoader),
         ]);
         cameraSystem.frameBaseStackAtViewPosition();

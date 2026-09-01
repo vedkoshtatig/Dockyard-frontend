@@ -6,9 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0",
-    "export:model": "XDG_CACHE_HOME=/tmp/blender-cache blender --factory-startup -b industry/megablocks.blend --python tools/export_dockyard.py",
-    "export:blend": "npm run export:model"
+    "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "socket.io-client": "^4.8.3",

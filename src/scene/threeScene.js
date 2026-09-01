@@ -1,6 +1,20 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import {
+  DESKTOP_RENDER_PIXEL_RATIO_LIMIT,
+  LOCK_CAMERA_TO_BLENDER_VIEW,
+  MOBILE_RENDER_PIXEL_RATIO_LIMIT,
+  SHADOW_MAP_SIZE,
+} from '../core/constants.js';
+
+function getRenderPixelRatio() {
+  const limit = window.innerWidth <= 768
+    ? MOBILE_RENDER_PIXEL_RATIO_LIMIT
+    : DESKTOP_RENDER_PIXEL_RATIO_LIMIT;
+
+  return Math.min(window.devicePixelRatio || 1, limit);
+}
 
 export function createThreeScene({ canvas, cameraHeightElement }) {
   const scene = new THREE.Scene();
@@ -14,7 +28,8 @@ export function createThreeScene({ canvas, cameraHeightElement }) {
     antialias: true,
     powerPreference: 'high-performance',
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.updatePixelRatio = () => renderer.setPixelRatio(getRenderPixelRatio());
+  renderer.updatePixelRatio();
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -55,7 +70,7 @@ export function createThreeScene({ canvas, cameraHeightElement }) {
   const sunLight = new THREE.DirectionalLight(0xffd39b, 2.35);
   sunLight.position.set(-85, 120, 70);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.set(2048, 2048);
+  sunLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
   sunLight.shadow.camera.near = 10;
   sunLight.shadow.camera.far = 360;
   sunLight.shadow.camera.left = -150;

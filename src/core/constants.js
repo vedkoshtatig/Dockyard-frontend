@@ -17,8 +17,11 @@ export const SHIP_WAKE_PADDING = 10;
 export const WATER_ANIMATION_SPEED = 1.65;
 export const WATER_SHIMMER_SPEED = 0.55;
 export const WATER_QUALITY = 'HIGH';
-export const WATER_BOAT_WAKE_MAX_COUNT = 32;
+export const WATER_BOAT_WAKE_MAX_COUNT = 8;
 export const SKYBOX_TEXTURE_SCROLL_SPEED = 0.002;
+export const DESKTOP_RENDER_PIXEL_RATIO_LIMIT = 2;
+export const MOBILE_RENDER_PIXEL_RATIO_LIMIT = 2;
+export const SHADOW_MAP_SIZE = 2048;
 
 export const AMBIENT_BIRD_MODEL_URL = 'birds.glb';
 export const AMBIENT_BIRD_FLOCK_COUNT = 11;
@@ -194,7 +197,7 @@ export const WATER_SETTINGS = {
     reflectionStrength: 0.68,
   },
   HIGH: {
-    segments: 520,
+    segments: 180,
     normalIntensity: 0.45,
     foamIntensity: 0.74,
     reflectionStrength: 0.68,

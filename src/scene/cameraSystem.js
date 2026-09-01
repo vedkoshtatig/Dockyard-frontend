@@ -268,6 +268,7 @@ export function createCameraSystem({
     const { innerWidth, innerHeight } = window;
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
+    renderer.updatePixelRatio?.();
     renderer.setSize(innerWidth, innerHeight);
   }
 
